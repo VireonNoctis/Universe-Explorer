@@ -1064,7 +1064,7 @@ module Astra
     count = [[numeric(limit)&.to_i || 250, 20].max, 500].min
     adql = "SELECT TOP #{count} source_id,ra,dec,parallax,phot_g_mean_mag,bp_rp FROM gaiadr3.gaia_source WHERE 1=CONTAINS(POINT('ICRS',ra,dec),CIRCLE('ICRS',#{ra},#{dec},#{radius})) AND parallax > 0.2 AND parallax_over_error > 5 AND phot_g_mean_mag < 18 ORDER BY phot_g_mean_mag ASC"
     uri = URI("https://gea.esac.esa.int/tap-server/tap/sync?#{URI.encode_www_form(REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'json', QUERY: adql)}")
-    response = request(uri, 'Accept' => 'application/json')
+    response = request(uri, { 'Accept' => 'application/json' }, read_timeout: 18.0)
     return [] unless response && response.code.to_i == 200
     payload = JSON.parse(response.body)
     fields = Array(payload['metadata']).map { |field| field['name'].to_s }
@@ -1370,7 +1370,11 @@ class AstraServer < Sinatra::Base
       esa: "https://www.esa.int/Science_Exploration/Space_Science",
       exoplanets: "https://exoplanetarchive.ipac.caltech.edu/",
       simbad: "https://simbad.cds.unistra.fr/simbad/sim-basic?Ident=#{safe_query}",
-      wikipedia: "https://en.wikipedia.org/w/index.php?search=#{safe_query}"
+      wikipedia: "https://en.wikipedia.org/w/index.php?search=#{safe_query}",
+      small_bodies: "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=#{safe_query}",
+      close_approaches: "https://ssd-api.jpl.nasa.gov/doc/cad.html",
+      horizons: "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+      gaia: "https://gea.esac.esa.int/archive/"
     }.to_json
   end
 
