@@ -179,6 +179,10 @@ a { color: inherit; text-decoration: none; }
 .dock-heading h2 { margin: 5px 0 0; font-size: 15px; font-weight: 500; letter-spacing: -.025em; }
 .dock-heading h2 em { color: #a89cff; font-style: normal; }
 .object-count { padding-bottom: 2px; color: #6f7b9b; font: 8px var(--display); letter-spacing: .09em; white-space: nowrap; }
+.archive-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 2px 10px; color: #8190b3; font-size: 9px; }
+.archive-toolbar button { padding: 7px 10px; border: 1px solid rgba(176, 164, 255, .31); border-radius: 6px; background: rgba(153, 140, 245, .1); color: #dcd5ff; font-size: 9px; white-space: nowrap; transition: background .17s, border-color .17s; }
+.archive-toolbar button:hover:not(:disabled) { border-color: rgba(176, 164, 255, .6); background: rgba(153, 140, 245, .19); }
+.archive-toolbar button:disabled { cursor: default; opacity: .55; }
 .category-row { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
 .category-row::-webkit-scrollbar { display: none; }
 .category-pill { display: inline-flex; align-items: center; gap: 7px; height: 27px; flex: 0 0 auto; padding: 0 10px; border: 1px solid rgba(166, 179, 225, .15); border-radius: 6px; background: rgba(133, 147, 207, .045); color: #9ba7c8; font-size: 9px; transition: all .17s; white-space: nowrap; }
@@ -280,6 +284,8 @@ a { color: inherit; text-decoration: none; }
   .dock-eyebrow { font-size: 7px; letter-spacing: .1em; }
   .object-count { font-size: 6px; }
   .category-row { gap: 4px; padding-bottom: 7px; }
+  .archive-toolbar { padding: 6px 0 8px; font-size: 8px; }
+  .archive-toolbar button { padding: 6px 8px; font-size: 8px; }
   .category-pill { height: 25px; padding: 0 8px; font-size: 8px; }
   .destination-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
   .destination { height: 37px; gap: 6px; padding: 4px 6px; }
