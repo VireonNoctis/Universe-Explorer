@@ -45,6 +45,9 @@ function App() {
       return item.category === category || (category === "planet" && item.category === "dwarf-planet");
     });
   }, [catalog, category]);
+  const mappedCount = useMemo(function () {
+    return catalog.filter(function (item) { return Array.isArray(item.position) && item.position.length === 3 && item.map_status !== "unplotted"; }).length;
+  }, [catalog]);
 
   function toast(message) {
     setNotice(message);
@@ -777,7 +780,7 @@ function App() {
         <div className="panel-note"><span>✳</span> Visual scale and placement are illustrative; facts link back to scientific references.</div>
       </aside>}
       <section className="explorer-dock">
-        <div className="dock-heading"><div><span className="dock-eyebrow">YOUR NEXT DESTINATION</span><h2>Explore the cosmos <em>↘</em></h2></div><span className="object-count">{catalog.length} MAPPED ENTRIES</span></div>
+        <div className="dock-heading"><div><span className="dock-eyebrow">YOUR NEXT DESTINATION</span><h2>Explore the cosmos <em>↘</em></h2></div><span className="object-count">{mappedCount} PLOTTED / {catalog.length} INDEXED</span></div>
         <div className="category-row">{CATEGORIES.map(function (item) { return <button key={item[0]} className={"category-pill" + (category === item[0] ? " active" : "")} onClick={function () {
           setCategory(item[0]);
           const nextScale = ["planet", "moon", "asteroid", "dwarf-planet"].includes(item[0]) ? "system" : "universe";
@@ -789,7 +792,7 @@ function App() {
         <div className="destination-row">{visibleCatalog.slice(0, 8).map(function (item) {
           return <button key={item.id} className={"destination" + (selected && selected.id === item.id ? " chosen" : "")} onClick={function () { chooseObject(item); }}><span className={"destination-icon " + item.category} style={{ "--orb": item.color || "#9e9eff" }}><i></i></span><span className="destination-copy"><small>{String(item.type || item.category || "OBJECT").toUpperCase()}</small><strong>{item.name}</strong></span><span className="destination-arrow">↗</span></button>;
         })}</div>
-        <div className="dock-footer"><span><i></i> LIVE CATALOGS · MAPPED ENTRIES {catalog.length}</span><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><div className="scene-actions"><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(-3); }} title="Zoom in" aria-label="Zoom in">+</button><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(3); }} title="Zoom out" aria-label="Zoom out">−</button><button className={labelsOn ? "selected" : ""} onClick={toggleLabels} title="Toggle labels" aria-label="Toggle labels">T</button><button className={orbitsOn ? "selected" : ""} onClick={toggleOrbits} title="Toggle orbit paths" aria-label="Toggle orbit paths">◎</button></div></div>
+        <div className="dock-footer"><span><i></i> LIVE CATALOGS · {mappedCount} PLOTTED / {catalog.length} INDEXED</span><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><div className="scene-actions"><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(-3); }} title="Zoom in" aria-label="Zoom in">+</button><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(3); }} title="Zoom out" aria-label="Zoom out">−</button><button className={labelsOn ? "selected" : ""} onClick={toggleLabels} title="Toggle labels" aria-label="Toggle labels">T</button><button className={orbitsOn ? "selected" : ""} onClick={toggleOrbits} title="Toggle orbit paths" aria-label="Toggle orbit paths">◎</button></div></div>
       </section>
       <div className="bottom-credit"><span></span> MULTI-CATALOG SKY MAP <b>/</b> MARKER SIZES EXAGGERATED FOR VISIBILITY</div>
       <div className={"toast" + (notice ? " visible" : "")} role="status">{notice}</div>
