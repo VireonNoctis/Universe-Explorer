@@ -2,12 +2,12 @@ const { useEffect, useMemo, useRef, useState } = React;
 
 const ICONS = {
   all: "✧", planet: "◉", exoplanet: "⊙", star: "✦", galaxy: "◎",
-  nebula: "✳", "black-hole": "◉", moon: "◌", "dwarf-planet": "◉", asteroid: "◇"
+  nebula: "✳", deep: "✧", "black-hole": "◉", moon: "◌", "dwarf-planet": "◉", asteroid: "◇"
 };
 const CATEGORIES = [
   ["all", "Everything"], ["planet", "Planets"], ["exoplanet", "Exoplanets"],
   ["star", "Stars"], ["galaxy", "Galaxies"], ["nebula", "Nebulae"],
-  ["black-hole", "Black holes"], ["moon", "Moons"]
+  ["black-hole", "Black holes"], ["moon", "Moons"], ["asteroid", "Comets & asteroids"], ["deep", "Deep space"]
 ];
 
 function App() {
@@ -289,7 +289,7 @@ function App() {
         hit = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.4, 14, 12), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
         group.add(hit);
         animated.push({ group: group, kind: "galaxy" });
-      } else if (item.category === "nebula") {
+      } else if (item.category === "nebula" || item.category === "deep") {
         makeNebula(group, item, Math.max(0.8, radius * 1.75));
         hit = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.1, 14, 12), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
         group.add(hit);
