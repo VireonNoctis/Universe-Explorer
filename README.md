@@ -16,7 +16,7 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Supplementary discovery:** Wikipedia search/summary provides broader context rather than serving as the scientific measurement authority.
 - **Object profiles:** summaries, measurements, coordinate provenance, related objects, and direct source links.
 - **Catalog Navigator:** an in-app research drawer with source coverage, paginated exoplanets, paginated asteroid/comet records, Earth close-approach forecasts, fireball observations, Sentry monitoring records, a bounded Gaia DR3 star sample, NASA image search and NASA technical literature.
-- **On-demand small-body vectors:** bulk small-body rows provide orbital parameters; selecting one requests a JPL Horizons vector instead of treating a catalog row as a current position.
+- **On-demand small-body vectors:** bulk small-body rows provide orbital parameters; selecting one requests a JPL Horizons vector instead of treating a catalog row as a current position. Sentry entries can also be cross-resolved into the JPL orbit record and position lookup.
 - **NASA visual archive:** search the NASA Image and Video Library for images, videos, and audio associated with planets, missions, observatories, and deep-sky targets. Previews link back to the original NASA media record.
 - **NASA research literature:** search NASA’s Technical Reports Server for public reports, mission papers, research citations and abstracts, with paginated results linked to the original citation.
 - **Responsive space UI:** deep-navy observatory design, procedural planet art, cosmic highlights, Orbitron/Space Grotesk typography, mobile layouts, reduced-motion support.
