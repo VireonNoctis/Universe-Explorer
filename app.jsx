@@ -27,6 +27,22 @@ function App() {
   const [exoHasMore, setExoHasMore] = useState(false);
   const [exoLoading, setExoLoading] = useState(false);
   const [exoLoadedCount, setExoLoadedCount] = useState(0);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveMode, setArchiveMode] = useState("coverage");
+  const [archiveRows, setArchiveRows] = useState([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+  const [archiveOffset, setArchiveOffset] = useState(0);
+  const [archiveCursor, setArchiveCursor] = useState("");
+  const [archiveHasMore, setArchiveHasMore] = useState(false);
+  const [archiveKind, setArchiveKind] = useState("all");
+  const [archiveNeoOnly, setArchiveNeoOnly] = useState(false);
+  const [archiveQuery, setArchiveQuery] = useState("");
+  const [approachDays, setApproachDays] = useState("90");
+  const [approachDistance, setApproachDistance] = useState("0.05");
+  const [coverage, setCoverage] = useState(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [coverageError, setCoverageError] = useState("");
   const [apiStatus, setApiStatus] = useState("CONNECTING");
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
@@ -618,6 +634,96 @@ function App() {
       .finally(function () { setExoLoading(false); });
   }
 
+  function loadCoverage() {
+    if (coverageLoading) return;
+    setCoverageLoading(true);
+    setCoverageError("");
+    fetch("/api/coverage")
+      .then(function (response) { if (!response.ok) throw new Error("Coverage service unavailable"); return response.json(); })
+      .then(function (data) { setCoverage(data); setApiStatus("CATALOG COVERAGE"); })
+      .catch(function () { setCoverageError("The source registry is temporarily unavailable. Local browsing and search can still work."); })
+      .finally(function () { setCoverageLoading(false); });
+  }
+
+  function loadArchive(mode, reset) {
+    const target = mode || archiveMode;
+    if (archiveLoading) return;
+    if (target === "coverage") {
+      setArchiveMode("coverage");
+      if (!coverage && !coverageLoading) loadCoverage();
+      return;
+    }
+    const restart = reset !== false;
+    const startOffset = restart ? 0 : archiveOffset;
+    const cursor = restart ? "" : archiveCursor;
+    setArchiveMode(target);
+    setArchiveLoading(true);
+    setArchiveError("");
+    if (restart) setArchiveRows([]);
+    let url = "";
+    if (target === "exoplanets") {
+      url = "/api/archive/exoplanets?limit=40" +
+        (cursor ? "&after=" + encodeURIComponent(cursor) : "") +
+        (archiveQuery.trim() ? "&q=" + encodeURIComponent(archiveQuery.trim()) : "");
+    } else if (target === "small-bodies") {
+      url = "/api/archive/small-bodies?limit=40&offset=" + startOffset +
+        "&kind=" + encodeURIComponent(archiveKind) +
+        (archiveNeoOnly ? "&neo=1" : "");
+    } else if (target === "close-approaches") {
+      url = "/api/close-approaches?days=" + encodeURIComponent(approachDays) +
+        "&distance=" + encodeURIComponent(approachDistance) + "&limit=40";
+    } else if (target === "gaia") {
+      url = "/api/sky?limit=450";
+    } else {
+      setArchiveLoading(false);
+      return;
+    }
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) throw new Error("The archive returned HTTP " + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        if (data.source_status === "unavailable") throw new Error("This archive is temporarily unavailable. Try again shortly.");
+        const incoming = target === "close-approaches" ? (data.events || []) : (data.objects || []);
+        setArchiveRows(function (previous) {
+          const base = restart ? [] : previous;
+          const ids = new Set(base.map(function (item) { return item.id; }));
+          return base.concat(incoming.filter(function (item) { return !ids.has(item.id); }));
+        });
+        if (target === "small-bodies") setArchiveOffset(startOffset + incoming.length);
+        if (target === "exoplanets") setArchiveCursor(data.next_cursor || "");
+        setArchiveHasMore(target === "small-bodies" || target === "exoplanets" ? Boolean(data.has_more) : false);
+        if (target !== "close-approaches") {
+          setCatalog(function (previous) {
+            const ids = new Set(previous.map(function (item) { return item.id; }));
+            return previous.concat(incoming.filter(function (item) { return !ids.has(item.id); }));
+          });
+        }
+        setApiStatus(target === "exoplanets" ? "NASA EXOPLANET ARCHIVE" : target === "small-bodies" || target === "close-approaches" ? "NASA/JPL SOLAR SYSTEM" : "ESA GAIA DR3");
+        if (!incoming.length) setArchiveError("No records were returned for this page or filter. Try different search criteria.");
+      })
+      .catch(function (error) { setArchiveError(error.message || "Could not reach this source."); })
+      .finally(function () { setArchiveLoading(false); });
+  }
+
+  function selectArchiveItem(item) {
+    if (!item) return;
+    setArchiveOpen(false);
+    if (item.catalog_source === "JPL Small-Body Database" || item.object_query) {
+      chooseObject(Object.assign({}, item, {
+        catalog_source: "JPL Small-Body Database",
+        pdes: item.pdes || item.object_query || item.designation,
+        map_frame: "solar-system",
+        system: "Solar System",
+        category: "asteroid",
+        map_status: item.map_status || "unplotted"
+      }));
+      return;
+    }
+    chooseObject(item);
+  }
+
   function chooseObject(item) {
     if (!item) return;
     setSearchOpen(false);
@@ -650,7 +756,39 @@ function App() {
           .catch(function () { skyConesRef.current.delete(tileKey); });
       }
     }
-    if (item.external && !item.descriptionLong && !item.facts) {
+    const needsSmallBodyResolution = (item.catalog_source === "JPL Small-Body Database" || item.object_query) &&
+      (!Array.isArray(item.position) || item.map_status === "unplotted");
+    if (needsSmallBodyResolution) {
+      setLoadingDetail(true);
+      const designation = item.pdes || item.object_query || item.spkid || item.name;
+      fetch("/api/small-body?query=" + encodeURIComponent(designation))
+        .then(function (response) { if (!response.ok) throw new Error("JPL could not resolve this designation"); return response.json(); })
+        .then(function (data) {
+          const raw = data.object || data;
+          const detailed = Object.assign({}, item, raw, {
+            catalog_source: "JPL Small-Body Database",
+            facts: Object.assign({}, raw.facts || {}, item.facts || {}),
+            sources: (raw.sources || []).concat(item.sources || []).filter(function (source, index, all) {
+              const url = typeof source === "string" ? source : source.url;
+              return url && all.findIndex(function (candidate) { return (typeof candidate === "string" ? candidate : candidate.url) === url; }) === index;
+            })
+          });
+          setSelected(function (current) { return current && (current.id === item.id || current.name === item.name) ? detailed : current; });
+          setCatalog(function (previous) {
+            const exists = previous.some(function (entry) { return entry.id === detailed.id; });
+            return exists ? previous.map(function (entry) { return entry.id === detailed.id ? detailed : entry; }) : previous.concat([detailed]);
+          });
+          if (Array.isArray(detailed.position) && sceneApi.current) {
+            sceneApi.current.addCatalog([detailed]);
+            sceneApi.current.scale("system");
+            sceneApi.current.filter("all");
+            sceneApi.current.focus(detailed);
+            setViewScale("system");
+          }
+        })
+        .catch(function () { toast("JPL detail lookup failed. Orbital measurements and source links remain available."); })
+        .finally(function () { setLoadingDetail(false); });
+    } else if (item.external && !item.descriptionLong && !item.facts) {
       setLoadingDetail(true);
       fetch("/api/lookup?title=" + encodeURIComponent(item.name))
         .then(function (response) { if (!response.ok) throw new Error("Could not load reference"); return response.json(); })
