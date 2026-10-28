@@ -61,6 +61,8 @@ module Astra
   }.freeze
   EPHEMERIS_MUTEX = Mutex.new
   JPL_REQUEST_MUTEX = Mutex.new
+  SEARCH_CACHE_MUTEX = Mutex.new
+  SEARCH_CACHE = {}
   NASA_MEDIA_MUTEX = Mutex.new
   NASA_MEDIA_CACHE = {}
   EPHEMERIS_CACHE = { fetched_at: Time.at(0), positions: {} }
@@ -1231,6 +1233,10 @@ module Astra
   def federated_search(query)
     safe = safe_catalog_query(query)
     return [] if safe.length < 2
+    cache_key = safe.downcase
+    cached = SEARCH_CACHE_MUTEX.synchronize { SEARCH_CACHE[cache_key] }
+    return cached[:results] if cached && Time.now - cached[:cached_at] < 180
+
     tasks = [
       Thread.new { exoplanet_search(safe, 8) },
       Thread.new { jpl_small_body_search(safe) },
@@ -1246,7 +1252,15 @@ module Astra
         []
       end
     end
-    results.uniq { |item| item[:name].to_s.downcase }.first(24)
+    deduplicated = results.uniq { |item| item[:name].to_s.downcase }.first(24)
+    SEARCH_CACHE_MUTEX.synchronize do
+      SEARCH_CACHE.delete_if { |_key, value| Time.now - value[:cached_at] > 1800 }
+      SEARCH_CACHE[cache_key] = { results: deduplicated, cached_at: Time.now }
+    end
+    deduplicated
+  rescue StandardError => e
+    warn "Astra federated search failed: #{e.class}: #{e.message}"
+    []
   end
 
 
