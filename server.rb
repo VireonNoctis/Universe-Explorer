@@ -604,8 +604,8 @@ module Astra
     end
     { objects: objects, count: objects.length, next_cursor: has_more ? rows.last&.dig('pl_name') : nil,
       has_more: has_more, source_status: 'ok', source: 'NASA Exoplanet Archive TAP · pscomppars',
-      catalog_is_exhaustive_for_query: true,
-      note: 'This is a paginated view of the archive table, not a catalogue of all known object types.' }
+      page_is_last: !has_more,
+      note: 'Cursor-paginated results from this archive table; the current page is not the complete archive or a catalogue of all known object types.' }
   rescue StandardError => e
     warn "NASA Exoplanet Archive page failed: #{e.class}: #{e.message}"
     { objects: [], next_cursor: nil, has_more: false, source_status: 'unavailable' }
