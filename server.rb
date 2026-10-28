@@ -1226,8 +1226,10 @@ class AstraServer < Sinatra::Base
         body_sizes: 'Celestial bodies are rendered as enlarged interactive markers and are not to physical size' },
       catalogs: [
         { id: 'nasa-exoplanet-archive', name: 'NASA Exoplanet Archive', scope: 'Confirmed exoplanets and host-system parameters', url: 'https://exoplanetarchive.ipac.caltech.edu/' },
-        { id: 'jpl-sbdb', name: 'JPL Small-Body Database / Horizons', scope: 'Asteroids, comets, orbital data and current vectors', url: 'https://ssd.jpl.nasa.gov/' },
-        { id: 'gaia-dr3', name: 'ESA Gaia DR3', scope: 'Astrometry and parallax distances for sampled stars', url: 'https://gea.esac.esa.int/archive/' },
+        { id: 'jpl-sbdb', name: 'JPL Small-Body Database', scope: 'Paged asteroid/comet records, orbital parameters and object detail lookup', url: 'https://ssd.jpl.nasa.gov/' },
+        { id: 'jpl-cad', name: 'JPL Close-Approach Data', scope: 'Upcoming Earth close approaches, distance and relative velocity data', url: 'https://ssd-api.jpl.nasa.gov/doc/cad.html' },
+        { id: 'jpl-horizons', name: 'JPL Horizons', scope: 'Date-dependent Solar System vectors and ephemerides', url: 'https://ssd-api.jpl.nasa.gov/doc/horizons.html' },
+        { id: 'gaia-dr3', name: 'ESA Gaia DR3', scope: 'Astrometry and parallax distances for bounded samples and sky cones', url: 'https://gea.esac.esa.int/archive/' },
         { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', scope: 'Astronomical name resolution and coordinates', url: 'https://cds.unistra.fr/cgi-bin/nph-sesame/' },
         { id: 'wikipedia', name: 'Wikipedia / Wikimedia', scope: 'Supplementary discoverability and contextual summaries', url: 'https://www.wikipedia.org/' }
       ] }.to_json
