@@ -3,6 +3,8 @@
 require 'json'
 require 'uri'
 require 'net/http'
+require 'date'
+require 'rexml/document'
 require 'time'
 require 'openssl'
 require 'sinatra/base'
@@ -635,18 +637,38 @@ module Astra
     return [] if name.empty?
     ra = numeric(REXML::XPath.first(resolver, './jradeg')&.text)
     dec = numeric(REXML::XPath.first(resolver, './jdedeg')&.text)
-    object_type = REXML::XPath.first(resolver, './otype')&.text.to_s
+    object_type = REXML::XPath.first(resolver, './otype')&.text.to_s.strip
+    parallax = numeric(REXML::XPath.first(resolver, './plx/v')&.text)
+    parallax_error = numeric(REXML::XPath.first(resolver, './plx/e')&.text)
+    # Sesame/SIMBAD reports stellar trigonometric parallax in milliarcseconds.
+    # Only use it for a 3D placement when the measurement is positive and has a
+    # usable signal-to-uncertainty ratio; no radial distance is inferred from a galaxy's
+    # direction alone.
+    distance_ly = if parallax && parallax > 0 && (!parallax_error || parallax_error < parallax)
+                    (1000.0 / parallax) * 3.26156
+                  end
+    position = radec_position(ra, dec, distance_ly)
     category = sesame_category(object_type, name)
     id = "sesame-#{name.downcase.gsub(/[^a-z0-9]+/, '-')}"
+    facts = {
+      'Resolver type' => object_type.empty? ? 'Not supplied' : object_type,
+      'Right ascension (J2000)' => ra ? "#{ra.round(6)}°" : nil,
+      'Declination (J2000)' => dec ? "#{dec.round(6)}°" : nil,
+      'Parallax' => parallax ? "#{parallax.round(4)} mas" : nil,
+      'Parallax uncertainty' => parallax_error ? "#{parallax_error.round(4)} mas" : nil,
+      'Estimated distance' => distance_ly ? "#{distance_ly.round(2)} light-years (from parallax)" : nil
+    }.compact
     {
       id: id, name: name, type: category_title(category), category: category,
-      color: category_color(category), size: 0.23, ra_deg: ra, dec_deg: dec,
-      position: nil, map_frame: 'universe', map_status: 'unplotted',
-      position_accuracy: 'Name resolver found direction but no reliable distance for 3D placement',
+      color: category_color(category), size: 0.08, ra_deg: ra, dec_deg: dec, distance_ly: distance_ly,
+      position: position, map_frame: 'universe', map_status: position ? 'plotted' : 'unplotted',
+      position_accuracy: position ? '3D position computed from the resolver direction and positive stellar parallax' : 'Name resolver found a direction but no reliable positive parallax distance; no radial distance is invented',
       position_source: 'CDS Sesame name resolver (SIMBAD / NED / VizieR)',
       external: true, subtitle: 'SIMBAD / NED / VizieR name resolver',
-      description: 'The CDS Sesame resolver matched this name and returned celestial coordinates. A reliable distance was not available from this response, so Astra does not invent a 3D position.',
-      facts: { 'Resolver type' => object_type.empty? ? 'Not supplied' : object_type, 'Right ascension (J2000)' => ra ? "#{ra.round(6)}°" : nil, 'Declination (J2000)' => dec ? "#{dec.round(6)}°" : nil, 'Distance' => 'Not supplied by resolver response' }.compact,
+      description: position ?
+        'The CDS Sesame resolver returned a J2000 direction and SIMBAD parallax. Distance is an estimate derived from the measured parallax and should be checked against the source reference.' :
+        'The CDS Sesame resolver matched this name and returned celestial coordinates. A reliable distance was not available, so Astra does not invent a 3D position.',
+      facts: facts,
       sources: [
         source('CDS Sesame name resolver', 'Centre de Données astronomiques de Strasbourg', "https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?#{URI.encode_www_form_component(name)}"),
         source('SIMBAD astronomical database', 'CDS Strasbourg', "https://simbad.cds.unistra.fr/simbad/sim-basic?Ident=#{URI.encode_www_form_component(name)}"),
@@ -657,7 +679,6 @@ module Astra
     warn "CDS Sesame search failed: #{e.class}: #{e.message}"
     []
   end
-
   def sesame_category(object_type, name)
     type = object_type.to_s.upcase
     return 'galaxy' if type.match?(/[GQ]/) || name.match?(/galaxy|milky way|andromeda/i)
@@ -730,6 +751,57 @@ module Astra
     stars
   rescue StandardError => e
     warn "Gaia DR3 query failed: #{e.class}: #{e.message}"
+    []
+  end
+
+
+  def gaia_cone_stars(ra_deg:, dec_deg:, radius_deg: 2.0, limit: 250)
+    ra = numeric(ra_deg)
+    dec = numeric(dec_deg)
+    radius = numeric(radius_deg)
+    return [] unless ra && dec && radius && ra.between?(0, 360) && dec.between?(-90, 90) && radius.between?(0.05, 15)
+    count = [[numeric(limit)&.to_i || 250, 20].max, 500].min
+    adql = "SELECT TOP #{count} source_id,ra,dec,parallax,phot_g_mean_mag,bp_rp FROM gaiadr3.gaia_source WHERE 1=CONTAINS(POINT('ICRS',ra,dec),CIRCLE('ICRS',#{ra},#{dec},#{radius})) AND parallax > 0.2 AND parallax_over_error > 5 AND phot_g_mean_mag < 18 ORDER BY phot_g_mean_mag ASC"
+    uri = URI("https://gea.esac.esa.int/tap-server/tap/sync?#{URI.encode_www_form(REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'json', QUERY: adql)}")
+    response = request(uri, 'Accept' => 'application/json')
+    return [] unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    fields = Array(payload['metadata']).map { |field| field['name'].to_s }
+    Array(payload['data']).filter_map do |row|
+      next unless row.is_a?(Array)
+      get = lambda { |key| index = fields.index(key); index ? row[index] : nil }
+      parallax = numeric(get.call('parallax'))
+      star_ra = numeric(get.call('ra'))
+      star_dec = numeric(get.call('dec'))
+      source_id = get.call('source_id')
+      next unless parallax && parallax.positive? && star_ra && star_dec && source_id
+      distance_ly = 1000.0 / parallax * 3.26156
+      position = radec_position(star_ra, star_dec, distance_ly)
+      next unless position
+      magnitude = numeric(get.call('phot_g_mean_mag'))
+      color_index = numeric(get.call('bp_rp'))
+      tint = color_index && color_index < 0.4 ? '#9fbaff' : (color_index && color_index > 1.6 ? '#ffb18a' : '#e8dfcb')
+      {
+        id: "gaia-dr3-#{source_id}", name: "Gaia DR3 #{source_id}", type: 'Gaia DR3 star',
+        category: 'star', color: tint, size: 0.06, position: position,
+        map_frame: 'universe', map_status: 'plotted', ra_deg: star_ra, dec_deg: star_dec,
+        distance_ly: distance_ly, parallax_mas: parallax, apparent_magnitude: magnitude,
+        position_accuracy: 'Gaia DR3 ICRS coordinates and distance estimated from parallax',
+        position_source: 'ESA Gaia Data Release 3', catalog_source: 'Gaia DR3',
+        subtitle: "Gaia DR3 · #{distance_ly.round(1)} light-years", system: 'Milky Way', external: true,
+        description: 'Gaia DR3 source returned for the requested sky cone. The 3D distance is estimated from its positive parallax; catalogue uncertainties and parallax systematics still apply.',
+        facts: { 'Gaia source ID' => source_id.to_s, 'Right ascension (ICRS)' => "#{star_ra.round(6)}°",
+          'Declination (ICRS)' => "#{star_dec.round(6)}°", 'Parallax' => "#{parallax.round(4)} mas",
+          'Estimated distance' => "#{distance_ly.round(2)} light-years",
+          'G-band magnitude' => magnitude&.round(3), 'BP − RP colour' => color_index&.round(3) }.compact,
+        sources: [
+          source('Gaia DR3 source archive', 'European Space Agency', "https://gea.esac.esa.int/archive/?source=#{source_id}"),
+          source('Gaia mission', 'ESA', 'https://www.esa.int/Science_Exploration/Space_Science/Gaia')
+        ], related: []
+      }
+    end
+  rescue StandardError => e
+    warn "Gaia cone search failed: #{e.class}: #{e.message}"
     []
   end
 
@@ -864,14 +936,21 @@ class AstraServer < Sinatra::Base
     content_type :json
     cache_control :no_store
     limit = params['limit'].to_s.empty? ? 450 : params['limit'].to_i
-    halt 400, { error: 'Limit must be between 40 and 700.' }.to_json unless limit.between?(40, 700)
-    stars = Astra.gaia_bright_stars(limit)
-    { objects: stars, count: stars.length,
-      catalog: 'Gaia DR3', complete_catalog: false,
-      note: 'A magnitude-limited, parallax-quality-filtered sample; not the full Gaia source table.',
-      source: 'https://gea.esac.esa.int/archive/' }.to_json
+    halt 400, { error: 'Limit must be between 20 and 700.' }.to_json unless limit.between?(20, 700)
+    if params.key?('ra') || params.key?('dec')
+      stars = Astra.gaia_cone_stars(ra_deg: params['ra'], dec_deg: params['dec'],
+                                    radius_deg: params['radius'].to_s.empty? ? 2 : params['radius'],
+                                    limit: limit)
+      { objects: stars, count: stars.length, catalog: 'Gaia DR3', complete_catalog: false,
+        query_mode: 'ICRS cone search', note: 'Only sources with positive, quality-filtered parallaxes are plotted.',
+        source: 'https://gea.esac.esa.int/archive/' }.to_json
+    else
+      stars = Astra.gaia_bright_stars(limit)
+      { objects: stars, count: stars.length, catalog: 'Gaia DR3', complete_catalog: false,
+        query_mode: 'bright all-sky sample', note: 'Magnitude-limited, parallax-quality-filtered sample; not the full Gaia source table.',
+        source: 'https://gea.esac.esa.int/archive/' }.to_json
+    end
   end
-
   get '/api/ephemeris' do
     content_type :json
     cache_control :no_store
