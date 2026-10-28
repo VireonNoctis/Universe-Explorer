@@ -61,6 +61,8 @@ module Astra
   }.freeze
   EPHEMERIS_MUTEX = Mutex.new
   JPL_REQUEST_MUTEX = Mutex.new
+  NASA_MEDIA_MUTEX = Mutex.new
+  NASA_MEDIA_CACHE = {}
   EPHEMERIS_CACHE = { fetched_at: Time.at(0), positions: {} }
 
   def orbital_position_au(distance_au, phase_deg)
@@ -432,7 +434,7 @@ module Astra
 
   def request(uri, extra_headers = {}, open_timeout: 2.0, read_timeout: 10.0)
     allowed_hosts = %w[
-      en.wikipedia.org exoplanetarchive.ipac.caltech.edu
+      en.wikipedia.org images-api.nasa.gov exoplanetarchive.ipac.caltech.edu
       ssd-api.jpl.nasa.gov ssd.jpl.nasa.gov cds.unistra.fr gea.esac.esa.int
     ]
     return nil unless uri.is_a?(URI::HTTPS) && allowed_hosts.include?(uri.host)
@@ -761,6 +763,62 @@ module Astra
   rescue StandardError => e
     warn "JPL close approach query failed: #{e.class}: #{e.message}"
     { events: [], source_status: 'unavailable', days: span || 90, distance_au: distance_au || 0.05 }
+  end
+
+
+  def nasa_media_search(query, limit: 8, media_type: 'image')
+    term = safe_catalog_query(query)
+    return { items: [], count: 0, source_status: 'invalid', error: 'Enter an object or mission name.' } if term.length < 2
+    count = [[numeric(limit)&.to_i || 8, 1].max, 12].min
+    type = %w[image video audio].include?(media_type.to_s) ? media_type.to_s : 'image'
+    key = "#{term.downcase}|#{type}|#{count}"
+    cached = NASA_MEDIA_MUTEX.synchronize { NASA_MEDIA_CACHE[key] }
+    return cached.merge(cache: 'hit') if cached && Time.now - cached[:cached_at] < 900
+
+    uri = URI("https://images-api.nasa.gov/search?#{URI.encode_www_form(q: term, media_type: type, page_size: count, page: 1)}")
+    response = request(uri, 'Accept' => 'application/json', read_timeout: 10.0)
+    return { items: [], count: 0, source_status: 'unavailable', source: 'NASA Image and Video Library' } unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    collection = payload.dig('collection') || {}
+    items = Array(collection['items']).filter_map do |entry|
+      next unless entry.is_a?(Hash)
+      data = Array(entry['data']).first
+      next unless data.is_a?(Hash)
+      nasa_id = data['nasa_id'].to_s
+      title = data['title'].to_s.strip
+      next if nasa_id.empty? || title.empty?
+      links = Array(entry['links'])
+      preview = links.find { |link| link.is_a?(Hash) && link['rel'] == 'preview' }
+      thumbnail_url = preview && preview['href'].to_s
+      thumbnail_url = nil unless thumbnail_url&.start_with?('https://')
+      keywords = Array(data['keywords']).first(12).map(&:to_s)
+      description = data['description'].to_s.gsub(/<[^>]*>/, ' ').gsub(/\s+/, ' ').strip
+      {
+        id: "nasa-media-#{nasa_id.gsub(/[^A-Za-z0-9_-]/, '-')}",
+        nasa_id: nasa_id, name: title, title: title, type: data['media_type'] || type,
+        media_type: data['media_type'] || type,
+        date_created: data['date_created'], center: data['center'],
+        thumbnail_url: thumbnail_url,
+        page_url: "https://images.nasa.gov/details/#{URI.encode_www_form_component(nasa_id)}",
+        asset_manifest_url: entry['href'].to_s.start_with?('https://') ? entry['href'] : nil,
+        keywords: keywords, description: description[0, 900],
+        source: 'NASA Image and Video Library',
+        source_url: 'https://images.nasa.gov/',
+        source_documentation: 'https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf'
+      }
+    end
+    result = { items: items, count: numeric(collection['metadata'].is_a?(Hash) ? collection.dig('metadata', 'total_hits') : nil)&.to_i || items.length,
+      returned: items.length, query: term, media_type: type, source_status: 'ok',
+      source: 'NASA Image and Video Library', note: 'Media search results support visual research; images are not evidence of physical coordinates, scale or current location.',
+      cached_at: Time.now }
+    NASA_MEDIA_MUTEX.synchronize do
+      NASA_MEDIA_CACHE.delete_if { |_cache_key, value| Time.now - value[:cached_at] > 3600 }
+      NASA_MEDIA_CACHE[key] = result
+    end
+    result
+  rescue StandardError => e
+    warn "NASA media search failed: #{e.class}: #{e.message}"
+    { items: [], count: 0, source_status: 'unavailable', source: 'NASA Image and Video Library' }
   end
 
   def archive_coverage
@@ -1354,9 +1412,11 @@ class AstraServer < Sinatra::Base
         { id: 'jpl-cad', name: 'JPL Close-Approach Data', scope: 'Upcoming Earth close approaches, distance and relative velocity data', url: 'https://ssd-api.jpl.nasa.gov/doc/cad.html' },
         { id: 'jpl-fireball', name: 'JPL CNEOS Fireball Data', scope: 'Reported atmospheric fireball event observations', url: 'https://ssd-api.jpl.nasa.gov/doc/fireball.html' },
         { id: 'jpl-sentry', name: 'JPL CNEOS Sentry', scope: 'Modelled potential-impact monitoring records; not impact predictions', url: 'https://ssd-api.jpl.nasa.gov/doc/sentry.html' },
+        { id: 'nasa-media', name: 'NASA Image and Video Library', scope: 'Mission photos, astronomy imagery, videos and audio; visual context is not astrometry', url: 'https://images.nasa.gov/' },
         { id: 'jpl-horizons', name: 'JPL Horizons', scope: 'Date-dependent Solar System vectors and ephemerides', url: 'https://ssd-api.jpl.nasa.gov/doc/horizons.html' },
         { id: 'gaia-dr3', name: 'ESA Gaia DR3', scope: 'Astrometry and parallax distances for bounded samples and sky cones', url: 'https://gea.esac.esa.int/archive/' },
         { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', scope: 'Astronomical name resolution and coordinates', url: 'https://cds.unistra.fr/cgi-bin/nph-sesame/' },
+        { id: 'nasa-media', name: 'NASA Image and Video Library', scope: 'Mission imagery, astronomy photos, videos and audio', url: 'https://images.nasa.gov/' },
         { id: 'wikipedia', name: 'Wikipedia / Wikimedia', scope: 'Supplementary discoverability and contextual summaries', url: 'https://www.wikipedia.org/' }
       ] }.to_json
   end
@@ -1407,6 +1467,20 @@ class AstraServer < Sinatra::Base
     halt 400, { error: 'days must be between 1 and 3650; limit between 5 and 80.' }.to_json unless days.between?(1, 3650) && limit.between?(5, 80)
     result = Astra.close_approach_page(days: days, distance_au: distance, limit: limit)
     status 503 if result[:source_status] == 'unavailable'
+    result.to_json
+  end
+
+  get '/api/media' do
+    content_type :json
+    query = params['q'].to_s.strip
+    limit = params['limit'].to_s.empty? ? 8 : params['limit'].to_i
+    media_type = params['type'].to_s.empty? ? 'image' : params['type'].to_s.downcase
+    halt 400, { error: 'Search query must be 2–90 characters.' }.to_json unless query.length.between?(2, 90)
+    halt 400, { error: 'Limit must be between 1 and 12.' }.to_json unless limit.between?(1, 12)
+    halt 400, { error: 'type must be image, video, or audio.' }.to_json unless %w[image video audio].include?(media_type)
+    result = Astra.nasa_media_search(query, limit: limit, media_type: media_type)
+    status 503 if result[:source_status] == 'unavailable'
+    result.delete(:cached_at)
     result.to_json
   end
 
