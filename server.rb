@@ -434,7 +434,7 @@ module Astra
 
   def request(uri, extra_headers = {}, open_timeout: 2.0, read_timeout: 10.0)
     allowed_hosts = %w[
-      en.wikipedia.org images-api.nasa.gov exoplanetarchive.ipac.caltech.edu
+      en.wikipedia.org images-api.nasa.gov ntrs.nasa.gov exoplanetarchive.ipac.caltech.edu
       ssd-api.jpl.nasa.gov ssd.jpl.nasa.gov cds.unistra.fr gea.esac.esa.int
     ]
     return nil unless uri.is_a?(URI::HTTPS) && allowed_hosts.include?(uri.host)
@@ -445,7 +445,7 @@ module Astra
     http.read_timeout = read_timeout
     http.write_timeout = 2.0 if http.respond_to?(:write_timeout=)
     request = Net::HTTP::Get.new(uri)
-    request['User-Agent'] = 'AstraUniverseExplorer/1.1 (educational astronomy catalog; contact: repository owner)'
+    request['User-Agent'] = 'AstraUniverseExplorer/1.2 (https://github.com/VireonNoctis/Universe-Explorer)'
     extra_headers.each { |key, value| request[key] = value }
     # JPL's public API fair-use policy asks clients to issue one API request at a time.
     if uri.host == 'ssd-api.jpl.nasa.gov'
@@ -819,6 +819,59 @@ module Astra
   rescue StandardError => e
     warn "NASA media search failed: #{e.class}: #{e.message}"
     { items: [], count: 0, source_status: 'unavailable', source: 'NASA Image and Video Library' }
+  end
+
+
+  def nasa_research_search(query, limit: 10, page: 1)
+    term = safe_catalog_query(query)
+    return { items: [], count: 0, source_status: 'invalid', error: 'Enter at least two search characters.' } if term.length < 2
+    count = [[numeric(limit)&.to_i || 10, 1].max, 20].min
+    page_number = [[numeric(page)&.to_i || 1, 1].max, 10_000].min
+    key = "#{term.downcase}|#{count}|#{page_number}"
+    cached = NASA_MEDIA_MUTEX.synchronize { NASA_MEDIA_CACHE["ntrs:#{key}"] }
+    return cached.merge(cache: 'hit') if cached && Time.now - cached[:cached_at] < 1200
+
+    uri = URI("https://ntrs.nasa.gov/api/citations/search?#{URI.encode_www_form(q: term, 'page.size' => count, page: page_number)}")
+    response = request(uri, 'Accept' => 'application/json', read_timeout: 12.0)
+    return { items: [], count: 0, source_status: 'unavailable', source: 'NASA Technical Reports Server' } unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    raw_items = Array(payload['results'])
+    items = raw_items.filter_map do |entry|
+      next unless entry.is_a?(Hash)
+      id = (entry['id'] || entry['stiId'] || entry['nasaId']).to_s
+      title = entry['title'].to_s.strip
+      next if id.empty? || title.empty?
+      authors = Array(entry['authors']).filter_map do |author|
+        author.is_a?(Hash) ? (author['name'] || [author['firstName'], author['lastName']].compact.join(' ')) : author.to_s
+      end
+      authors = authors.map(&:strip).reject(&:empty?).first(5)
+      abstract = (entry['abstract'] || entry['description'] || '').to_s.gsub(/<[^>]*>/, ' ').gsub(/\s+/, ' ').strip
+      doc_url = "https://ntrs.nasa.gov/citations/#{URI.encode_www_form_component(id)}"
+      {
+        id: "ntrs-#{id.gsub(/[^A-Za-z0-9_-]/, '-')}", ntrs_id: id,
+        name: title, title: title, type: 'NASA research publication', category: 'deep',
+        publication_date: entry['publicationDate'] || entry['publicationYear'],
+        center: entry['center'], document_type: entry['stiType'] || entry['documentType'],
+        authors: authors, abstract: abstract[0, 1200], description: abstract[0, 1200],
+        url: doc_url, page_url: doc_url, source: 'NASA Technical Reports Server',
+        source_status: 'ok', external: true
+      }
+    end
+    stats = payload['stats'].is_a?(Hash) ? payload['stats'] : {}
+    total = numeric(stats['total'])&.to_i || numeric(payload['total'])&.to_i || items.length
+    result = { items: items, count: total, returned: items.length, query: term, page: page_number,
+      page_size: count, has_more: page_number * count < total,
+      source_status: 'ok', source: 'NASA Technical Reports Server',
+      note: 'NASA STI citations and abstracts; record coverage varies by publication type and access rights.',
+      cached_at: Time.now }
+    NASA_MEDIA_MUTEX.synchronize do
+      NASA_MEDIA_CACHE.delete_if { |_cache_key, value| value[:cached_at].is_a?(Time) && Time.now - value[:cached_at] > 3600 }
+      NASA_MEDIA_CACHE["ntrs:#{key}"] = result
+    end
+    result
+  rescue StandardError => e
+    warn "NASA NTRS search failed: #{e.class}: #{e.message}"
+    { items: [], count: 0, source_status: 'unavailable', source: 'NASA Technical Reports Server' }
   end
 
   def archive_coverage
@@ -1413,10 +1466,12 @@ class AstraServer < Sinatra::Base
         { id: 'jpl-fireball', name: 'JPL CNEOS Fireball Data', scope: 'Reported atmospheric fireball event observations', url: 'https://ssd-api.jpl.nasa.gov/doc/fireball.html' },
         { id: 'jpl-sentry', name: 'JPL CNEOS Sentry', scope: 'Modelled potential-impact monitoring records; not impact predictions', url: 'https://ssd-api.jpl.nasa.gov/doc/sentry.html' },
         { id: 'nasa-media', name: 'NASA Image and Video Library', scope: 'Mission photos, astronomy imagery, videos and audio; visual context is not astrometry', url: 'https://images.nasa.gov/' },
+        { id: 'ntrs', name: 'NASA Technical Reports Server', scope: 'Technical reports, journal articles, mission papers and public abstracts', url: 'https://ntrs.nasa.gov/' },
         { id: 'jpl-horizons', name: 'JPL Horizons', scope: 'Date-dependent Solar System vectors and ephemerides', url: 'https://ssd-api.jpl.nasa.gov/doc/horizons.html' },
         { id: 'gaia-dr3', name: 'ESA Gaia DR3', scope: 'Astrometry and parallax distances for bounded samples and sky cones', url: 'https://gea.esac.esa.int/archive/' },
         { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', scope: 'Astronomical name resolution and coordinates', url: 'https://cds.unistra.fr/cgi-bin/nph-sesame/' },
         { id: 'nasa-media', name: 'NASA Image and Video Library', scope: 'Mission imagery, astronomy photos, videos and audio', url: 'https://images.nasa.gov/' },
+        { id: 'ntrs', name: 'NASA Technical Reports Server', scope: 'NASA-funded scientific and technical publications', url: 'https://ntrs.nasa.gov/' },
         { id: 'wikipedia', name: 'Wikipedia / Wikimedia', scope: 'Supplementary discoverability and contextual summaries', url: 'https://www.wikipedia.org/' }
       ] }.to_json
   end
@@ -1467,6 +1522,19 @@ class AstraServer < Sinatra::Base
     halt 400, { error: 'days must be between 1 and 3650; limit between 5 and 80.' }.to_json unless days.between?(1, 3650) && limit.between?(5, 80)
     result = Astra.close_approach_page(days: days, distance_au: distance, limit: limit)
     status 503 if result[:source_status] == 'unavailable'
+    result.to_json
+  end
+
+  get '/api/research' do
+    content_type :json
+    query = params['q'].to_s.strip
+    limit = params['limit'].to_s.empty? ? 10 : params['limit'].to_i
+    page = params['page'].to_s.empty? ? 1 : params['page'].to_i
+    halt 400, { error: 'Search query must be 2–90 characters.' }.to_json unless query.length.between?(2, 90)
+    halt 400, { error: 'Limit must be between 1 and 20; page between 1 and 10000.' }.to_json unless limit.between?(1, 20) && page.between?(1, 10_000)
+    result = Astra.nasa_research_search(query, limit: limit, page: page)
+    status 503 if result[:source_status] == 'unavailable'
+    result.delete(:cached_at)
     result.to_json
   end
 
