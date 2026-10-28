@@ -1453,7 +1453,7 @@ class AstraServer < Sinatra::Base
   get '/api/health' do
     content_type :json
     { status: 'ok', app: 'Astra Universe Explorer', catalog_count: Astra::CATALOG.length,
-      external_search: 'NASA TAP, JPL SBDB/CAD/Horizons, ESA Gaia, CDS Sesame, Wikipedia', timestamp: Time.now.utc.iso8601 }.to_json
+      external_search: 'NASA TAP, JPL SBDB/CAD/Horizons/CNEOS, ESA Gaia, CDS Sesame, NASA Media/NTRS, Wikipedia', timestamp: Time.now.utc.iso8601 }.to_json
   end
 
   get '/api/catalog' do
@@ -1673,8 +1673,12 @@ class AstraServer < Sinatra::Base
       wikipedia: "https://en.wikipedia.org/w/index.php?search=#{safe_query}",
       small_bodies: "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=#{safe_query}",
       close_approaches: "https://ssd-api.jpl.nasa.gov/doc/cad.html",
+      fireballs: "https://ssd-api.jpl.nasa.gov/doc/fireball.html",
+      sentry: "https://ssd-api.jpl.nasa.gov/doc/sentry.html",
       horizons: "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
-      gaia: "https://gea.esac.esa.int/archive/"
+      gaia: "https://gea.esac.esa.int/archive/",
+      media: "https://images.nasa.gov/search?q=#{safe_query}",
+      research: "https://ntrs.nasa.gov/search?q=#{safe_query}"
     }.to_json
   end
 
