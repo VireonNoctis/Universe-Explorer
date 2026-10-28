@@ -929,13 +929,13 @@ function App() {
           <button className="close-panel archive-close" onClick={function () { setArchiveOpen(false); }} aria-label="Close archive browser">×</button>
         </div>
         <div className="archive-mode-row">
-          <button className={archiveMode === "coverage" ? "active" : ""} onClick={function () { setArchiveMode("coverage"); if (!coverage && !coverageLoading) loadCoverage(); }}>Coverage</button>
-          <button className={archiveMode === "exoplanets" ? "active" : ""} onClick={function () { setArchiveMode("exoplanets"); loadArchive("exoplanets", true); }}>Exoplanets</button>
-          <button className={archiveMode === "small-bodies" ? "active" : ""} onClick={function () { setArchiveMode("small-bodies"); loadArchive("small-bodies", true); }}>Asteroids & comets</button>
-          <button className={archiveMode === "close-approaches" ? "active" : ""} onClick={function () { setArchiveMode("close-approaches"); loadArchive("close-approaches", true); }}>Earth approaches</button>
-          <button className={archiveMode === "gaia" ? "active" : ""} onClick={function () { setArchiveMode("gaia"); loadArchive("gaia", true); }}>Gaia stars</button>
-          <button className={archiveMode === "fireballs" ? "active" : ""} onClick={function () { setArchiveMode("fireballs"); loadArchive("fireballs", true); }}>Fireballs</button>
-          <button className={archiveMode === "impact-monitor" ? "active" : ""} onClick={function () { setArchiveMode("impact-monitor"); loadArchive("impact-monitor", true); }}>Sentry monitor</button>
+          <button className={archiveMode === "coverage" ? "active" : ""} onClick={function () { setArchiveMode("coverage"); if (!coverage && !coverageLoading) loadCoverage(); }} disabled={archiveLoading}>Coverage</button>
+          <button className={archiveMode === "exoplanets" ? "active" : ""} onClick={function () { setArchiveMode("exoplanets"); loadArchive("exoplanets", true); }} disabled={archiveLoading}>Exoplanets</button>
+          <button className={archiveMode === "small-bodies" ? "active" : ""} onClick={function () { setArchiveMode("small-bodies"); loadArchive("small-bodies", true); }} disabled={archiveLoading}>Asteroids & comets</button>
+          <button className={archiveMode === "close-approaches" ? "active" : ""} onClick={function () { setArchiveMode("close-approaches"); loadArchive("close-approaches", true); }} disabled={archiveLoading}>Earth approaches</button>
+          <button className={archiveMode === "gaia" ? "active" : ""} onClick={function () { setArchiveMode("gaia"); loadArchive("gaia", true); }} disabled={archiveLoading}>Gaia stars</button>
+          <button className={archiveMode === "fireballs" ? "active" : ""} onClick={function () { setArchiveMode("fireballs"); loadArchive("fireballs", true); }} disabled={archiveLoading}>Fireballs</button>
+          <button className={archiveMode === "impact-monitor" ? "active" : ""} onClick={function () { setArchiveMode("impact-monitor"); loadArchive("impact-monitor", true); }} disabled={archiveLoading}>Sentry monitor</button>
         </div>
         {archiveMode === "coverage" && <div className="coverage-view">
           <div className="archive-intro"><span>ARCHIVE STATUS</span><h3>Many catalogs. Different skies.</h3><p>Counts below are source-specific and overlap. A source marked queryable is available for bounded searches—not downloaded in full.</p><button disabled={coverageLoading} onClick={loadCoverage}><span>↻</span> {coverageLoading ? "Checking archives…" : "Refresh source status"}</button></div>
