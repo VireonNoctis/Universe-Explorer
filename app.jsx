@@ -23,6 +23,10 @@ function App() {
   const [orbitsOn, setOrbitsOn] = useState(true);
   const [sceneReady, setSceneReady] = useState(false);
   const [viewScale, setViewScale] = useState("universe");
+  const [exoCursor, setExoCursor] = useState("");
+  const [exoHasMore, setExoHasMore] = useState(false);
+  const [exoLoading, setExoLoading] = useState(false);
+  const [exoLoadedCount, setExoLoadedCount] = useState(0);
   const [apiStatus, setApiStatus] = useState("CONNECTING");
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
@@ -583,6 +587,34 @@ function App() {
     }
   }, [catalog, category, labelsOn, orbitsOn]);
 
+  function loadExoplanetPage(reset) {
+    if (exoLoading) return;
+    const cursor = reset ? "" : exoCursor;
+    setExoLoading(true);
+    const url = "/api/archive/exoplanets?limit=40" + (cursor ? "&after=" + encodeURIComponent(cursor) : "");
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) throw new Error("NASA Exoplanet Archive is unavailable");
+        return response.json();
+      })
+      .then(function (data) {
+        const incoming = Array.isArray(data.objects) ? data.objects : [];
+        setCatalog(function (previous) {
+          const base = reset ? previous.filter(function (item) { return item.catalog_source !== "NASA Exoplanet Archive"; }) : previous;
+          const ids = new Set(base.map(function (item) { return item.id; }));
+          return base.concat(incoming.filter(function (item) { return !ids.has(item.id); }));
+        });
+        setExoCursor(data.next_cursor || "");
+        setExoHasMore(Boolean(data.has_more));
+        setExoLoadedCount(function (previous) { return (reset ? 0 : previous) + incoming.length; });
+        setApiStatus("NASA EXOPLANET ARCHIVE");
+        if (!incoming.length && data.source_status !== "ok") toast("NASA Exoplanet Archive is temporarily unavailable.");
+        else if (incoming.length) toast("Loaded " + incoming.length + " archive records.");
+      })
+      .catch(function () { toast("NASA Exoplanet Archive is unavailable. Local and federated search still work."); })
+      .finally(function () { setExoLoading(false); });
+  }
+
   function chooseObject(item) {
     if (!item) return;
     setSearchOpen(false);
@@ -746,7 +778,14 @@ function App() {
       </aside>}
       <section className="explorer-dock">
         <div className="dock-heading"><div><span className="dock-eyebrow">YOUR NEXT DESTINATION</span><h2>Explore the cosmos <em>↘</em></h2></div><span className="object-count">{catalog.length} MAPPED ENTRIES</span></div>
-        <div className="category-row">{CATEGORIES.map(function (item) { return <button key={item[0]} className={"category-pill" + (category === item[0] ? " active" : "")} onClick={function () { setCategory(item[0]); if (sceneApi.current) sceneApi.current.filter(item[0]); }}><span>{ICONS[item[0]]}</span>{item[1]}</button>; })}</div>
+        <div className="category-row">{CATEGORIES.map(function (item) { return <button key={item[0]} className={"category-pill" + (category === item[0] ? " active" : "")} onClick={function () {
+          setCategory(item[0]);
+          const nextScale = ["planet", "moon", "asteroid", "dwarf-planet"].includes(item[0]) ? "system" : "universe";
+          setViewScale(nextScale);
+          if (sceneApi.current) { sceneApi.current.scale(nextScale); sceneApi.current.filter(item[0]); }
+          if (item[0] === "exoplanet" && exoLoadedCount === 0) loadExoplanetPage(true);
+        }}><span>{ICONS[item[0]]}</span>{item[1]}</button>; })}</div>
+        {category === "exoplanet" && <div className="archive-toolbar"><span>{exoLoadedCount ? exoLoadedCount + " NASA archive entries loaded" : "Search the confirmed exoplanet archive"}</span><button disabled={exoLoading || (!exoHasMore && exoLoadedCount > 0)} onClick={function () { loadExoplanetPage(exoLoadedCount === 0); }}>{exoLoading ? "Loading archive…" : exoLoadedCount === 0 ? "Load NASA exoplanets ↗" : exoHasMore ? "Load next page ↗" : "All matching pages loaded"}</button></div>}
         <div className="destination-row">{visibleCatalog.slice(0, 8).map(function (item) {
           return <button key={item.id} className={"destination" + (selected && selected.id === item.id ? " chosen" : "")} onClick={function () { chooseObject(item); }}><span className={"destination-icon " + item.category} style={{ "--orb": item.color || "#9e9eff" }}><i></i></span><span className="destination-copy"><small>{String(item.type || item.category || "OBJECT").toUpperCase()}</small><strong>{item.name}</strong></span><span className="destination-arrow">↗</span></button>;
         })}</div>
