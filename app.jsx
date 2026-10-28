@@ -32,6 +32,7 @@ function App() {
   const noticeTimer = useRef(null);
   const selectedRef = useRef(null);
   const ephemerisRef = useRef({});
+  const skyConesRef = useRef(new Set());
   selectedRef.current = selected;
 
   const visibleCatalog = useMemo(function () {
@@ -572,6 +573,23 @@ function App() {
       if (Array.isArray(item.position)) sceneApi.current.focus(item);
     }
     setCategory("all");
+    if (Number.isFinite(Number(item.ra_deg)) && Number.isFinite(Number(item.dec_deg))) {
+      const tileKey = Math.round(Number(item.ra_deg) * 2) + ":" + Math.round(Number(item.dec_deg) * 2);
+      if (!skyConesRef.current.has(tileKey)) {
+        skyConesRef.current.add(tileKey);
+        const coneUrl = "/api/sky?ra=" + encodeURIComponent(item.ra_deg) + "&dec=" + encodeURIComponent(item.dec_deg) + "&radius=1.2&limit=150";
+        fetch(coneUrl)
+          .then(function (response) { if (!response.ok) throw new Error("Sky cone unavailable"); return response.json(); })
+          .then(function (sky) {
+            const incoming = (sky.objects || []).filter(function (star) { return Array.isArray(star.position); });
+            setCatalog(function (previous) {
+              const ids = new Set(previous.map(function (existing) { return existing.id; }));
+              return previous.concat(incoming.filter(function (star) { return !ids.has(star.id); }));
+            });
+          })
+          .catch(function () { skyConesRef.current.delete(tileKey); });
+      }
+    }
     if (item.external && !item.descriptionLong && !item.facts) {
       setLoadingDetail(true);
       fetch("/api/lookup?title=" + encodeURIComponent(item.name))
@@ -610,7 +628,17 @@ function App() {
       return next;
     });
   }
-  const facts = selected ? (selected.facts || {}) : {};
+  const facts = selected ? Object.assign({}, selected.facts || {}) : {};
+  if (selected && Number.isFinite(Number(selected.ra_deg)) && Number.isFinite(Number(selected.dec_deg))) {
+    facts["Right ascension (ICRS)"] = Number(selected.ra_deg).toFixed(5) + "°";
+    facts["Declination (ICRS)"] = Number(selected.dec_deg).toFixed(5) + "°";
+  }
+  if (selected && Number.isFinite(Number(selected.distance_ly)) && Number(selected.distance_ly) > 0) {
+    facts["Distance from Sun / Earth"] = Number(selected.distance_ly).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " light-years";
+  }
+  if (selected && Number.isFinite(Number(selected.distance_from_sun_au))) {
+    facts["Mean heliocentric distance"] = Number(selected.distance_from_sun_au).toLocaleString(undefined, { maximumFractionDigits: 4 }) + " AU";
+  }
   const sources = selected ? (selected.sources || []) : [];
   const related = selected && Array.isArray(selected.related) ? selected.related.map(function (id) {
     return catalog.find(function (item) { return item.id === id; });
