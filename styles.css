@@ -93,8 +93,23 @@ a { color: inherit; text-decoration: none; }
 .mouse-outline { position: relative; display: block; width: 17px; height: 24px; border: 1px solid #7884a7; border-radius: 10px; opacity: .82; }
 .mouse-outline i { position: absolute; top: 5px; left: 7px; width: 2px; height: 5px; border-radius: 2px; background: #c2b9ff; animation: scroll-hint 1.6s infinite; }
 @keyframes scroll-hint { 0%,100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(5px); } }
-.sky-legend { position: absolute; top: 31px; right: 35px; display: flex; flex-direction: column; gap: 12px; }
+.sky-legend { position: absolute; top: 20px; right: 35px; display: flex; flex-direction: column; gap: 12px; }
 .sky-legend span { display: flex; align-items: center; gap: 8px; color: #858fb0; font: 8px var(--display); letter-spacing: .1em; }
+
+.scale-ribbon { position: absolute; top: 116px; right: 31px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding: 10px 12px; border: 1px solid rgba(162, 176, 232, .18); border-radius: 8px; background: rgba(7, 10, 23, .64); box-shadow: 0 9px 30px rgba(0, 0, 0, .15); backdrop-filter: blur(12px); pointer-events: auto; }
+.scale-ribbon small { color: #7985a8; font: 7px var(--display); letter-spacing: .13em; }
+.scale-ribbon strong { color: #d8dcff; font: 9px var(--display); letter-spacing: .055em; }
+.scale-ribbon button { padding: 0; border: 0; color: #a99eff; background: transparent; font-size: 9px; }
+.scale-ribbon button:hover { color: #e5e0ff; }
+.coordinate-note { display: flex; align-items: flex-start; gap: 9px; margin: 13px 0 3px; padding: 10px; border: 1px solid rgba(141, 226, 203, .15); border-radius: 8px; background: rgba(108, 215, 185, .045); }
+.coordinate-note > span { width: 6px; height: 6px; flex: 0 0 auto; margin-top: 4px; border-radius: 50%; background: #7de0c8; box-shadow: 0 0 8px rgba(125, 224, 200, .55); }
+.coordinate-note > div { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.coordinate-note strong { color: #cfe8e1; font-size: 9px; font-weight: 600; }
+.coordinate-note small { color: #8498a9; font-size: 8px; line-height: 1.55; overflow-wrap: anywhere; }
+.coordinate-note.unplotted { border-color: rgba(241, 195, 130, .18); background: rgba(241, 195, 130, .045); }
+.coordinate-note.unplotted > span { background: #edc07f; box-shadow: 0 0 8px rgba(237, 192, 127, .4); }
+.coordinate-note.unplotted strong { color: #edd1a8; }
+
 .sky-legend i { width: 6px; height: 6px; border-radius: 50%; }
 .legend-planet { background: #83b8ff; box-shadow: 0 0 8px #6fa8ff; }
 .legend-star { background: #ffd6a0; box-shadow: 0 0 8px #ffd6a0; }
@@ -212,6 +227,7 @@ a { color: inherit; text-decoration: none; }
   .system-status { font-size: 7px; letter-spacing: .05em; }
   .header-tools { gap: 9px; }
   .sky-legend { right: 22px; }
+  .scale-ribbon { right: 18px; top: 120px; }
   .detail-panel { left: 17px; width: min(380px, calc(100vw - 34px)); }
   .explorer-dock { left: 17px; right: 17px; }
   .destination { gap: 6px; padding: 5px 6px; }
@@ -241,7 +257,11 @@ a { color: inherit; text-decoration: none; }
   .hero-foot { gap: 6px; margin-top: 18px; font-size: 6px; }
   .primary-action { height: 35px; gap: 12px; padding: 0 10px; font-size: 10px; }
   .drag-hint { font-size: 7px; }
-  .sky-legend { top: 19px; right: 12px; gap: 8px; }
+  .sky-legend { top: 15px; right: 12px; gap: 8px; }
+  .scale-ribbon { top: 103px; right: 9px; gap: 4px; padding: 7px 8px; }
+  .scale-ribbon small { font-size: 6px; }
+  .scale-ribbon strong { font-size: 7px; }
+  .scale-ribbon button { font-size: 8px; }
   .sky-legend span { gap: 6px; font-size: 6px; }
   .scene-instructions { top: 50%; font-size: 7px; letter-spacing: .06em; }
   .detail-panel { top: 84px; bottom: 209px; left: 9px; width: calc(100vw - 18px); padding: 13px 14px; border-radius: 11px; }
@@ -286,6 +306,7 @@ a { color: inherit; text-decoration: none; }
   .hero-copy { top: 18%; left: 17px; max-width: 240px; }
   .hero-copy h1 { font-size: 35px; }
   .scene-instructions { top: 47%; }
+  .scale-ribbon { top: 111px; right: 8px; }
   .detail-panel { top: 86px; bottom: 207px; }
   .micro-label { font-size: 7px; }
   .detail-title h2 { font-size: 22px; }
