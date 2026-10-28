@@ -233,7 +233,7 @@ module Astra
       { 'Type' => 'Periodic comet', 'Orbital period' => 'About 75–76 years', 'Last perihelion' => '1986', 'Next perihelion' => 'Expected 2061', 'Origin' => 'Outer Solar System' },
       [source('Comet observation resources', 'NASA', NASA), source('Minor Planet Center', 'IAU / Smithsonian', 'https://www.minorplanetcenter.net/')],
       %w[sun jupiter pluto]),
-    object('vega-placeholder', 'Observable Universe', 'Cosmological horizon', 'nebula', '#93a6ff', 0.78, [0, 0, -32], 'Cosmology',
+    object('observable-universe', 'Observable Universe', 'Cosmological horizon', 'deep', '#93a6ff', 0.78, [0, 0, -32], 'Cosmology',
       'The observable region of the universe',
       'The observable universe is the region from which light has had time to reach us since the early universe. It is not necessarily the whole universe, whose full extent is unknown.',
       { 'Age of universe' => 'About 13.8 billion years', 'Observable radius' => 'About 46.5 billion light-years', 'Contents' => 'Galaxies, matter, radiation and dark components', 'Limit' => 'Cosmic particle horizon' },
@@ -247,12 +247,13 @@ module Astra
     phrase = "#{title} #{text}".downcase
     return 'black-hole' if phrase.match?(/black hole|sagittarius a\*|m87\*/)
     return 'galaxy' if phrase.match?(/galaxy|galaxies|milky way|andromeda|sombrero/)
+    return 'deep' if phrase.match?(/observable universe|cosmolog|deep space/)
     return 'nebula' if phrase.match?(/nebula|supernova remnant|pillars of creation|pulsar/)
     return 'exoplanet' if phrase.match?(/exoplanet|kepler-\d|trappist|proxima centauri [bc]|planet [a-z]$/)
     return 'moon' if phrase.match?(/moon|satellite|europa|titan|enceladus|ganymede|io\b/)
     return 'planet' if phrase.match?(/\bplanet\b|mercury|venus|earth|mars|jupiter|saturn|uranus|neptune|pluto/)
     return 'star' if phrase.match?(/\bstar\b|sun|sirius|vega|betelgeuse|centauri/)
-    'nebula'
+    'deep'
   end
 
   def wiki_search(query, limit = 6)
@@ -336,13 +337,13 @@ module Astra
   def category_title(category)
     { 'planet' => 'Planet', 'dwarf-planet' => 'Dwarf planet', 'moon' => 'Natural satellite',
       'exoplanet' => 'Exoplanet', 'star' => 'Star', 'galaxy' => 'Galaxy',
-      'nebula' => 'Nebula / deep space', 'black-hole' => 'Black hole', 'asteroid' => 'Small Solar System body' }[category] || 'Astronomical reference'
+      'nebula' => 'Nebula / deep space', 'deep' => 'Deep space / cosmology', 'black-hole' => 'Black hole', 'asteroid' => 'Small Solar System body' }[category] || 'Astronomical reference'
   end
 
   def category_color(category)
     { 'planet' => '#7a9bf7', 'dwarf-planet' => '#c7b29a', 'moon' => '#c0cbdf',
       'exoplanet' => '#6bdce1', 'star' => '#ffbd83', 'galaxy' => '#b6a3ff',
-      'nebula' => '#a48bff', 'black-hole' => '#bd92ff', 'asteroid' => '#97d8d9' }[category] || '#a7b3ff'
+      'nebula' => '#a48bff', 'deep' => '#93a6ff', 'black-hole' => '#bd92ff', 'asteroid' => '#97d8d9' }[category] || '#a7b3ff'
   end
 end
 
