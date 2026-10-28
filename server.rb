@@ -128,7 +128,7 @@ module Astra
 
   def object(id, name, type, category, color, size, _initial_position, system, subtitle, description, facts, sources, related, texture_colors = nil)
     item = {
-      id: id, name: name, type: type, category: category, color: color,
+      id: id, name: name, type: type, category: category, color: color, size: size,
       system: system, subtitle: subtitle, description: description,
       facts: facts, sources: sources, related: related
     }
@@ -532,6 +532,83 @@ module Astra
   rescue StandardError => e
     warn "NASA Exoplanet Archive search failed: #{e.class}: #{e.message}"
     []
+  end
+
+
+  def exoplanet_archive_page(limit: 40, after: nil, query: nil)
+    count = numeric(limit)&.to_i || 40
+    count = [[count, 10].max, 100].min
+    cursor = safe_catalog_query(after)
+    term = safe_catalog_query(query)
+    filters = []
+    filters << "pl_name > '#{cursor.gsub("'", "''")}'" unless cursor.empty?
+    unless term.empty?
+      escaped_term = term.gsub("'", "''")
+      filters << "(pl_name like '%#{escaped_term}%' or hostname like '%#{escaped_term}%')"
+    end
+    where = filters.empty? ? '' : " where #{filters.join(' and ')}"
+    adql = "select top #{count + 1} pl_name,hostname,discoverymethod,disc_year,sy_dist,pl_orbper,pl_rade,pl_bmasse,ra,dec from pscomppars#{where} order by pl_name asc"
+    uri = URI("https://exoplanetarchive.ipac.caltech.edu/TAP/sync?#{URI.encode_www_form(query: adql, format: 'json')}")
+    response = request(uri, 'Accept' => 'application/json')
+    return { objects: [], next_cursor: nil, has_more: false, source_status: 'unavailable' } unless response && response.code.to_i == 200
+
+    payload = JSON.parse(response.body)
+    if payload.is_a?(Hash) && payload['data'].is_a?(Array)
+      fields = Array(payload['metadata']).map { |field| field.is_a?(Hash) ? field['name'].to_s : '' }
+      rows = payload['data'].map do |row|
+        row.is_a?(Hash) ? row.transform_keys(&:to_s) : (row.is_a?(Array) ? fields.zip(row).to_h : nil)
+      end.compact
+    elsif payload.is_a?(Array)
+      rows = payload
+    else
+      rows = []
+    end
+    has_more = rows.length > count
+    rows = rows.first(count)
+    objects = rows.filter_map do |row|
+      next unless row.is_a?(Hash)
+      row = row.transform_keys(&:to_s)
+      name = row['pl_name'].to_s
+      next if name.empty?
+      host = row['hostname'].to_s
+      ra = numeric(row['ra'])
+      dec = numeric(row['dec'])
+      distance_pc = numeric(row['sy_dist'])
+      distance_ly = distance_pc ? distance_pc * 3.26156 : nil
+      position = radec_position(ra, dec, distance_ly)
+      {
+        id: "nasa-exoplanet-#{name.downcase.gsub(/[^a-z0-9]+/, '-')}",
+        name: name, type: 'Exoplanet', category: 'exoplanet', color: '#6bdce1', size: 0.09,
+        position: position, ra_deg: ra, dec_deg: dec, distance_ly: distance_ly,
+        map_frame: 'universe', map_status: position ? 'plotted' : 'unplotted',
+        position_accuracy: position ? 'Host-star sky coordinates and distance from NASA Exoplanet Archive' : 'Archive does not provide a complete coordinate + distance pair',
+        position_source: 'NASA Exoplanet Archive · Planetary Systems Composite Parameters',
+        subtitle: host.empty? ? 'Confirmed planet · NASA Exoplanet Archive' : "Orbits #{host}",
+        system: host, host: host,
+        description: "#{name} is listed in NASA’s Planetary Systems Composite Parameters table. Only published values available in the returned record are shown.",
+        facts: {
+          'Host star' => host.empty? ? nil : host,
+          'Discovery method' => row['discoverymethod'],
+          'Discovery year' => row['disc_year'],
+          'Distance from Earth' => distance_ly ? "#{distance_ly.round(2)} light-years" : nil,
+          'Orbital period' => with_unit(row['pl_orbper'], 'days'),
+          'Radius' => with_unit(row['pl_rade'], 'Earth radii'),
+          'Mass' => with_unit(row['pl_bmasse'], 'Earth masses')
+        }.compact,
+        sources: [
+          source('NASA Exoplanet Archive record', 'NASA Exoplanet Science Institute', 'https://exoplanetarchive.ipac.caltech.edu/'),
+          source('Planetary Systems Composite Parameters', 'NASA / Caltech', "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?#{URI.encode_www_form(query: "select * from pscomppars where pl_name='#{name.gsub("'", "''")}'", format: 'csv')}")
+        ],
+        related: [], catalog_source: 'NASA Exoplanet Archive'
+      }
+    end
+    { objects: objects, count: objects.length, next_cursor: has_more ? rows.last&.dig('pl_name') : nil,
+      has_more: has_more, source_status: 'ok', source: 'NASA Exoplanet Archive TAP · pscomppars',
+      catalog_is_exhaustive_for_query: true,
+      note: 'This is a paginated view of the archive table, not a catalogue of all known object types.' }
+  rescue StandardError => e
+    warn "NASA Exoplanet Archive page failed: #{e.class}: #{e.message}"
+    { objects: [], next_cursor: nil, has_more: false, source_status: 'unavailable' }
   end
 
   def numeric(value)
@@ -940,6 +1017,19 @@ class AstraServer < Sinatra::Base
         { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', scope: 'Astronomical name resolution and coordinates', url: 'https://cds.unistra.fr/cgi-bin/nph-sesame/' },
         { id: 'wikipedia', name: 'Wikipedia / Wikimedia', scope: 'Supplementary discoverability and contextual summaries', url: 'https://www.wikipedia.org/' }
       ] }.to_json
+  end
+
+  get '/api/archive/exoplanets' do
+    content_type :json
+    cache_control :no_store
+    limit = params['limit'].to_s.empty? ? 40 : params['limit'].to_i
+    halt 400, { error: 'Limit must be between 10 and 100.' }.to_json unless limit.between?(10, 100)
+    query = params['q'].to_s.strip
+    after = params['after'].to_s.strip
+    halt 400, { error: 'Query or cursor is too long.' }.to_json if query.length > 90 || after.length > 120
+    result = Astra.exoplanet_archive_page(limit: limit, after: after, query: query)
+    status 503 if result[:source_status] == 'unavailable'
+    result.to_json
   end
 
   get '/api/sky' do
