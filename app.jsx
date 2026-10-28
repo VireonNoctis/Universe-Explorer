@@ -355,7 +355,29 @@ function App() {
       orbits.push(line);
     }
     function makeNode(item) {
-      if (!item || !item.id || nodes.has(item.id)) return nodes.get(item.id);
+      if (!item || !item.id) return null;
+      const existing = nodes.get(item.id);
+      if (existing) {
+        existing.item = Object.assign({}, existing.item, item);
+        existing.group.userData.item = existing.item;
+        existing.hit.userData.objectId = item.id;
+        if (Array.isArray(item.position) && item.position.length === 3 && item.map_status !== "unplotted") {
+          if (scaleMode === "system" && (item.map_frame === "solar-system" || item.system === "Solar System")) {
+            const local = item.local_position_au || item.position.map(function (value) { return value * 63241.077084; });
+            existing.group.position.fromArray(local);
+          } else {
+            existing.group.position.fromArray(item.position);
+          }
+          existing.basePosition = item.position.slice();
+          existing.group.visible = true;
+        } else {
+          existing.group.visible = false;
+          existing.label.style.display = "none";
+        }
+        existing.label.innerHTML = '<span></span>' + escapeHtml(existing.item.name);
+        existing.label.title = "Explore " + existing.item.name;
+        return existing;
+      }
       if (!Array.isArray(item.position) || item.position.length !== 3 || item.map_status === "unplotted") return null;
       const radius = Math.max(0.025, Math.min(Number(item.size) || 0.08, 0.12));
       const group = new THREE.Group();
@@ -408,7 +430,7 @@ function App() {
       label.className = "sky-label";
       label.innerHTML = '<span></span>' + escapeHtml(item.name);
       label.title = "Explore " + item.name;
-      label.addEventListener("click", function (event) { event.stopPropagation(); chooseObject(item); });
+      label.addEventListener("click", function (event) { event.stopPropagation(); const current = nodes.get(item.id); if (current) chooseObject(current.item); });
       labelLayer.appendChild(label);
       const node = { item: item, group: group, hit: hit, label: label, radius: radius, basePosition: item.position.slice() };
       nodes.set(item.id, node);
