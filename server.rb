@@ -930,6 +930,11 @@ module Astra
       sources: source_statuses + [
         { id: 'gaia-dr3', name: 'ESA Gaia DR3', status: 'queryable', scope: 'Bounded magnitude-limited sample and on-demand sky cones; full table is not copied into Astra', url: 'https://gea.esac.esa.int/archive/' },
         { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', status: 'queryable', scope: 'Name resolution and coordinate records; no unified master object count', url: 'https://cds.unistra.fr/doc/sesame.htx' },
+        { id: 'jpl-cad', name: 'JPL Close-Approach Data', status: 'queryable', scope: 'Bounded forecasts; the source model provides approach times, distances and velocities', url: 'https://ssd-api.jpl.nasa.gov/doc/cad.html' },
+        { id: 'jpl-fireball', name: 'JPL CNEOS Fireball Data', status: 'queryable', scope: 'Reported atmospheric events; not tracked celestial positions', url: 'https://ssd-api.jpl.nasa.gov/doc/fireball.html' },
+        { id: 'jpl-sentry', name: 'JPL CNEOS Sentry', status: 'queryable', scope: 'Modeled possible-impact monitoring cases, not impact predictions', url: 'https://ssd-api.jpl.nasa.gov/doc/sentry.html' },
+        { id: 'nasa-media', name: 'NASA Image and Video Library', status: 'queryable', scope: 'Images, videos and audio for contextual research; not astrometric data', url: 'https://images.nasa.gov/' },
+        { id: 'ntrs', name: 'NASA Technical Reports Server', status: 'queryable', scope: 'Scientific/technical citations and abstracts; not a source of sky coordinates', url: 'https://ntrs.nasa.gov/' },
         { id: 'wikipedia', name: 'Wikimedia', status: 'supplementary', scope: 'Contextual full-text discovery, not measurement authority', url: 'https://www.wikipedia.org/' }
       ]
     }
@@ -1015,7 +1020,7 @@ module Astra
   end
 
   def horizons_position(command)
-    start_date = Date.today
+    start_date = Time.now.utc.to_date
     parameters = {
       format: 'json', COMMAND: "'#{command}'", OBJ_DATA: 'NO', MAKE_EPHEM: 'YES',
       EPHEM_TYPE: 'VECTORS', CENTER: "'500@10'", REF_PLANE: 'FRAME',
@@ -1247,7 +1252,7 @@ module Astra
 
   def fireball_records(limit: 30, date_min: nil)
     count = [[numeric(limit)&.to_i || 30, 5].max, 100].min
-    parameters = { limit: count, sort: '-date' }
+    parameters = { limit: count }
     begin
       parsed_date = Date.iso8601(date_min.to_s) unless date_min.to_s.empty?
       parameters['date-min'] = parsed_date.iso8601 if parsed_date
