@@ -429,7 +429,7 @@ module Astra
     nil
   end
 
-  def request(uri, extra_headers = {})
+  def request(uri, extra_headers = {}, open_timeout: 2.0, read_timeout: 10.0)
     allowed_hosts = %w[
       en.wikipedia.org exoplanetarchive.ipac.caltech.edu
       ssd-api.jpl.nasa.gov ssd.jpl.nasa.gov cds.unistra.fr gea.esac.esa.int
@@ -438,8 +438,8 @@ module Astra
 
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
-    http.open_timeout = 2.0
-    http.read_timeout = 3.0
+    http.open_timeout = open_timeout
+    http.read_timeout = read_timeout
     http.write_timeout = 2.0 if http.respond_to?(:write_timeout=)
     request = Net::HTTP::Get.new(uri)
     request['User-Agent'] = 'AstraUniverseExplorer/1.1 (educational astronomy catalog; contact: repository owner)'
@@ -609,6 +609,219 @@ module Astra
   rescue StandardError => e
     warn "NASA Exoplanet Archive page failed: #{e.class}: #{e.message}"
     { objects: [], next_cursor: nil, has_more: false, source_status: 'unavailable' }
+  end
+
+
+  def small_body_archive_page(limit: 40, offset: 0, kind: 'all', neo: false)
+    count = numeric(limit)&.to_i || 40
+    count = [[count, 10].max, 100].min
+    start = numeric(offset)&.to_i || 0
+    start = [[start, 0].max, 2_000_000].min
+    selected_kind = %w[asteroid comet all].include?(kind.to_s) ? kind.to_s : 'all'
+    fields = %w[spkid full_name kind pdes name class neo pha moid orbit_id epoch e a q i om w ma tp per ad H diameter condition_code n_obs_used source soln_date]
+    parameters = { fields: fields.join(','), limit: count + 1, 'limit-from' => start, sort: 'spkid' }
+    parameters['sb-kind'] = selected_kind == 'asteroid' ? 'a' : 'c' unless selected_kind == 'all'
+    parameters['sb-group'] = 'neo' if neo
+    uri = URI("https://ssd-api.jpl.nasa.gov/sbdb_query.api?#{URI.encode_www_form(parameters)}")
+    response = request(uri, 'Accept' => 'application/json', read_timeout: 14.0)
+    return { objects: [], offset: start, next_offset: nil, has_more: false, source_status: 'unavailable' } unless response && response.code.to_i == 200
+
+    payload = JSON.parse(response.body)
+    return { objects: [], offset: start, next_offset: nil, has_more: false, source_status: 'unavailable', error: payload['message'] } if payload['code'] && payload['code'].to_i >= 400
+
+    field_names = Array(payload['fields']).map(&:to_s)
+    rows = Array(payload['data']).filter_map do |row|
+      next unless row.is_a?(Array)
+      field_names.zip(row).to_h
+    end
+    has_more = rows.length > count
+    page = rows.first(count)
+    objects = page.filter_map do |row|
+      name = (row['full_name'] || row['name'] || row['pdes']).to_s.strip
+      designation = row['pdes'].to_s.strip
+      spkid = row['spkid'].to_s.strip
+      next if name.empty?
+      is_comet = row['kind'].to_s.start_with?('c')
+      category = is_comet ? 'asteroid' : 'asteroid'
+      object_id = "jpl-sbdb-#{(spkid.empty? ? designation : spkid).gsub(/[^A-Za-z0-9]+/, '-')}"
+      facts = {
+        'Primary designation' => designation.empty? ? nil : designation,
+        'SPK ID' => spkid.empty? ? nil : spkid,
+        'Body class' => is_comet ? 'Comet' : 'Asteroid',
+        'Orbit class' => row['class'],
+        'Near-Earth object' => row['neo'],
+        'Potentially hazardous flag' => row['pha'],
+        'Minimum orbit intersection distance' => with_unit(row['moid'], 'AU'),
+        'Semi-major axis' => with_unit(row['a'], 'AU'),
+        'Perihelion distance' => with_unit(row['q'], 'AU'),
+        'Aphelion distance' => with_unit(row['ad'], 'AU'),
+        'Eccentricity' => numeric(row['e'])&.round(6),
+        'Inclination' => with_unit(row['i'], 'degrees'),
+        'Orbital period' => with_unit(row['per'], 'days'),
+        'Absolute magnitude' => numeric(row['H'])&.round(3),
+        'Estimated diameter' => with_unit(row['diameter'], 'km'),
+        'Orbit solution' => row['orbit_id'],
+        'Observations used' => row['n_obs_used'],
+        'Solution date' => row['soln_date']
+      }.compact
+      {
+        id: object_id, name: name, type: is_comet ? 'Comet / small body' : 'Asteroid / small body',
+        category: category, color: '#9ed7da', size: 0.055, position: nil, local_position_au: nil,
+        map_frame: 'solar-system', map_status: 'unplotted',
+        position_accuracy: 'Bulk orbital record does not include a current position vector; request the object detail for a JPL Horizons vector.',
+        position_source: 'NASA/JPL Small-Body Database Query API',
+        catalog_source: 'JPL Small-Body Database', pdes: designation, spkid: spkid,
+        subtitle: is_comet ? 'JPL Small-Body Database · comet' : 'JPL Small-Body Database · asteroid',
+        system: 'Solar System', external: true,
+        description: "#{name} is listed in NASA/JPL’s Small-Body Database. Orbital and physical parameters are included where the archive returns them. The bulk record is not treated as a current physical position.",
+        facts: facts,
+        sources: [
+          source('JPL Small-Body Database record', 'NASA / JPL', "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=#{URI.encode_www_form_component(designation.empty? ? name : designation)}"),
+          source('JPL SBDB Query API', 'NASA / JPL', 'https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html'),
+          source('JPL Horizons ephemerides', 'NASA / JPL', 'https://ssd-api.jpl.nasa.gov/doc/horizons.html')
+        ], related: []
+      }
+    end
+    { objects: objects, count: objects.length, offset: start, next_offset: has_more ? start + count : nil,
+      has_more: has_more, source_status: 'ok', source: 'NASA/JPL Small-Body Database Query API',
+      note: 'Offset-paginated catalogue data. Current 3D positions are fetched per object from Horizons on demand.' }
+  rescue StandardError => e
+    warn "JPL small-body archive page failed: #{e.class}: #{e.message}"
+    { objects: [], offset: start || 0, next_offset: nil, has_more: false, source_status: 'unavailable' }
+  end
+
+  def small_body_detail(query)
+    results = jpl_small_body_search(query)
+    return nil if results.empty?
+    object = results.first
+    object[:catalog_source] = 'JPL Small-Body Database'
+    object[:size] = 0.09
+    vector_au = object[:local_position_au]
+    object[:distance_from_sun_au] = Math.sqrt(vector_au.sum { |value| value.to_f**2 }) if vector_au
+    object[:facts] ||= {}
+    object[:facts]['Heliocentric distance (vector epoch)'] = "#{object[:distance_from_sun_au].round(6)} AU" if object[:distance_from_sun_au]
+    object
+  end
+
+  def close_approach_page(days: 90, distance_au: 0.05, limit: 30)
+    span = [[numeric(days)&.to_i || 90, 1].max, 3650].min
+    distance = numeric(distance_au) || 0.05
+    return { events: [], source_status: 'invalid' } unless distance.finite? && distance.between?(0.001, 5.0)
+    count = [[numeric(limit)&.to_i || 30, 5].max, 80].min
+    date_min = Date.today.iso8601
+    date_max = (Date.today + span).iso8601
+    params = {
+      'date-min' => date_min, 'date-max' => date_max, 'dist-max' => distance.to_s,
+      sort: 'date', limit: count, fullname: 1, diameter: 1, 'ca-time' => 'cd'
+    }
+    uri = URI("https://ssd-api.jpl.nasa.gov/cad.api?#{URI.encode_www_form(params)}")
+    response = request(uri, 'Accept' => 'application/json', read_timeout: 12.0)
+    return { events: [], source_status: 'unavailable', days: span, distance_au: distance } unless response && response.code.to_i == 200
+
+    payload = JSON.parse(response.body)
+    fields = Array(payload['fields']).map(&:to_s)
+    events = Array(payload['data']).filter_map do |row|
+      next unless row.is_a?(Array)
+      data = fields.zip(row).to_h
+      designation = (data['des'] || data['fullname']).to_s
+      next if designation.empty?
+      event_date = (data['cd'] || data['jd']).to_s
+      dist = numeric(data['dist'])
+      { id: "cad-#{designation.gsub(/[^A-Za-z0-9]+/, '-')}-#{event_date.gsub(/[^A-Za-z0-9]+/, '-')}",
+        designation: designation, name: data['fullname'] || designation,
+        date: data['cd'], julian_date: data['jd'], distance_au: dist,
+        distance_lunar: numeric(data['dist_ld']), relative_velocity_km_s: numeric(data['v_rel']),
+        absolute_magnitude: numeric(data['h']), diameter_km: numeric(data['diameter']),
+        body: data['body'] || 'Earth', epoch: data['cd'],
+        source: 'NASA/JPL Close-Approach Data API',
+        object_query: designation,
+        facts: {
+          'Close-approach time (TDB)' => data['cd'] || data['jd'],
+          'Closest approach' => with_unit(data['dist'], 'AU'),
+          'Distance' => with_unit(data['dist_ld'], 'lunar distances'),
+          'Relative velocity' => with_unit(data['v_rel'], 'km/s'),
+          'Absolute magnitude' => data['h'],
+          'Estimated diameter' => with_unit(data['diameter'], 'km'),
+          'Target body' => data['body'] || 'Earth'
+        }.compact,
+        sources: [
+          source('JPL close-approach record', 'NASA / JPL', "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=#{URI.encode_www_form_component(designation)}"),
+          source('Close-Approach Data API', 'NASA / JPL', 'https://ssd-api.jpl.nasa.gov/doc/cad.html')
+        ] }
+    end
+    { events: events, count: events.length, days: span, distance_au: distance,
+      source_status: 'ok', source: 'NASA/JPL Close-Approach Data API',
+      range: { from: date_min, to: date_max }, note: 'Approach events are forecasts in the returned model, not collision predictions. Distances and times have uncertainties in the source catalog.' }
+  rescue StandardError => e
+    warn "JPL close approach query failed: #{e.class}: #{e.message}"
+    { events: [], source_status: 'unavailable', days: span || 90, distance_au: distance_au || 0.05 }
+  end
+
+  def archive_coverage
+    cache_key = :coverage_summary
+    if defined?(@coverage_cache) && @coverage_cache && Time.now - @coverage_cached_at < 900
+      return @coverage_cache
+    end
+    work = [
+      Thread.new do
+        uri = URI("https://ssd-api.jpl.nasa.gov/sbdb_query.api?#{URI.encode_www_form(info: 'count')}")
+        response = request(uri, 'Accept' => 'application/json', read_timeout: 12.0)
+        payload = response && response.code.to_i == 200 ? JSON.parse(response.body) : nil
+        counts = payload&.dig('info', 'count')
+        if counts
+          { id: 'jpl-sbdb', name: 'JPL Small-Body Database', status: 'online',
+            families: { numbered_asteroids: numeric(counts['an'])&.to_i, unnumbered_asteroids: numeric(counts['au'])&.to_i,
+                        numbered_comets: numeric(counts['cn'])&.to_i, unnumbered_comets: numeric(counts['cu'])&.to_i },
+            count_scope: 'Archive count by numbered status and object type', url: 'https://ssd.jpl.nasa.gov/' }
+        else
+          { id: 'jpl-sbdb', name: 'JPL Small-Body Database', status: 'unavailable',
+            count_scope: 'Live archive count unavailable', url: 'https://ssd.jpl.nasa.gov/' }
+        end
+      rescue StandardError
+        { id: 'jpl-sbdb', name: 'JPL Small-Body Database', status: 'unavailable', url: 'https://ssd.jpl.nasa.gov/' }
+      end,
+      Thread.new do
+        adql = 'select count(*) as total from pscomppars'
+        uri = URI("https://exoplanetarchive.ipac.caltech.edu/TAP/sync?#{URI.encode_www_form(query: adql, format: 'json')}")
+        response = request(uri, 'Accept' => 'application/json', read_timeout: 15.0)
+        payload = response && response.code.to_i == 200 ? JSON.parse(response.body) : nil
+        value = if payload.is_a?(Hash) && payload['data'].is_a?(Array)
+                  fields = Array(payload['metadata']).map { |field| field['name'].to_s }
+                  row = Array(payload['data']).first
+                  index = fields.index('total') || 0
+                  row.is_a?(Array) ? numeric(row[index])&.to_i : nil
+                elsif payload.is_a?(Array) && payload.first.is_a?(Hash)
+                  numeric(payload.first['total'])&.to_i
+                end
+        { id: 'nasa-exoplanet-archive', name: 'NASA Exoplanet Archive', status: value ? 'online' : 'unavailable',
+          record_count: value, count_scope: 'Rows in the PSCompPars table; table coverage and default parameter availability can change',
+          url: 'https://exoplanetarchive.ipac.caltech.edu/' }
+      rescue StandardError
+        { id: 'nasa-exoplanet-archive', name: 'NASA Exoplanet Archive', status: 'unavailable',
+          count_scope: 'Live archive count unavailable', url: 'https://exoplanetarchive.ipac.caltech.edu/' }
+      end
+    ]
+    source_statuses = work.map do |thread|
+      thread.value
+    rescue StandardError
+      { status: 'unavailable' }
+    end
+    result = {
+      generated_at_utc: Time.now.utc.iso8601,
+      local_curated_records: CATALOG.length,
+      note: 'Counts are source-specific and should not be summed: catalogs overlap and cover different object classes. Gaia and CDS are exposed as query services; no unbounded full-table download is performed.',
+      sources: source_statuses + [
+        { id: 'gaia-dr3', name: 'ESA Gaia DR3', status: 'queryable', scope: 'Bounded magnitude-limited sample and on-demand sky cones; full table is not copied into Astra', url: 'https://gea.esac.esa.int/archive/' },
+        { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', status: 'queryable', scope: 'Name resolution and coordinate records; no unified master object count', url: 'https://cds.unistra.fr/doc/sesame.htx' },
+        { id: 'wikipedia', name: 'Wikimedia', status: 'supplementary', scope: 'Contextual full-text discovery, not measurement authority', url: 'https://www.wikipedia.org/' }
+      ]
+    }
+    @coverage_cache = result
+    @coverage_cached_at = Time.now
+    result
+  rescue StandardError => e
+    warn "Astra source coverage failed: #{e.class}: #{e.message}"
+    { generated_at_utc: Time.now.utc.iso8601, local_curated_records: CATALOG.length, sources: [], error: 'Coverage services are temporarily unavailable.' }
   end
 
   def numeric(value)
@@ -999,7 +1212,7 @@ class AstraServer < Sinatra::Base
   get '/api/health' do
     content_type :json
     { status: 'ok', app: 'Astra Universe Explorer', catalog_count: Astra::CATALOG.length,
-      external_search: 'Wikipedia API', timestamp: Time.now.utc.iso8601 }.to_json
+      external_search: 'NASA TAP, JPL SBDB/CAD/Horizons, ESA Gaia, CDS Sesame, Wikipedia', timestamp: Time.now.utc.iso8601 }.to_json
   end
 
   get '/api/catalog' do
@@ -1029,6 +1242,49 @@ class AstraServer < Sinatra::Base
     halt 400, { error: 'Query or cursor is too long.' }.to_json if query.length > 90 || after.length > 120
     result = Astra.exoplanet_archive_page(limit: limit, after: after, query: query)
     status 503 if result[:source_status] == 'unavailable'
+    result.to_json
+  end
+
+  get '/api/archive/small-bodies' do
+    content_type :json
+    cache_control :no_store
+    limit = params['limit'].to_s.empty? ? 40 : params['limit'].to_i
+    offset = params['offset'].to_s.empty? ? 0 : params['offset'].to_i
+    kind = params['kind'].to_s.empty? ? 'all' : params['kind'].to_s.downcase
+    neo = %w[1 true yes].include?(params['neo'].to_s.downcase)
+    halt 400, { error: 'Limit must be between 10 and 100; offset between 0 and 2000000.' }.to_json unless limit.between?(10, 100) && offset.between?(0, 2_000_000)
+    halt 400, { error: 'kind must be all, asteroid, or comet.' }.to_json unless %w[all asteroid comet].include?(kind)
+    result = Astra.small_body_archive_page(limit: limit, offset: offset, kind: kind, neo: neo)
+    status 503 if result[:source_status] == 'unavailable'
+    result.to_json
+  end
+
+  get '/api/small-body' do
+    content_type :json
+    cache_control :no_store
+    query = params['query'].to_s.strip
+    halt 400, { error: 'Provide a JPL small-body name or designation.' }.to_json if query.empty? || query.length > 100
+    object = Astra.small_body_detail(query)
+    halt 404, { error: 'No unambiguous JPL small-body match was found.' }.to_json unless object
+    { object: object, source: 'NASA/JPL SBDB + Horizons' }.to_json
+  end
+
+  get '/api/close-approaches' do
+    content_type :json
+    cache_control :no_store
+    days = params['days'].to_s.empty? ? 90 : params['days'].to_i
+    distance = params['distance'].to_s.empty? ? 0.05 : params['distance']
+    limit = params['limit'].to_s.empty? ? 30 : params['limit'].to_i
+    halt 400, { error: 'days must be between 1 and 3650; limit between 5 and 80.' }.to_json unless days.between?(1, 3650) && limit.between?(5, 80)
+    result = Astra.close_approach_page(days: days, distance_au: distance, limit: limit)
+    status 503 if result[:source_status] == 'unavailable'
+    result.to_json
+  end
+
+  get '/api/coverage' do
+    content_type :json
+    result = Astra.archive_coverage
+    cache_control :public, max_age: 600
     result.to_json
   end
 
