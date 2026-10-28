@@ -478,6 +478,24 @@ function App() {
       targetGoal = point.clone().sub(cameraRight.multiplyScalar(Math.min(scaleMode === "system" ? 2 : 2.7, distance * 0.36)));
       cameraGoal = targetGoal.clone().add(viewDirection.multiplyScalar(distance));
     }
+    function fitVisible() {
+      const visible = Array.from(nodes.values()).filter(function (node) { return node.group.visible; });
+      if (!visible.length) return;
+      const minimum = new THREE.Vector3(Infinity, Infinity, Infinity);
+      const maximum = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+      visible.forEach(function (node) {
+        minimum.min(node.group.position);
+        maximum.max(node.group.position);
+      });
+      const center = minimum.clone().add(maximum).multiplyScalar(0.5);
+      const span = maximum.clone().sub(minimum).length();
+      const distance = Math.max(scaleMode === "system" ? 8 : 7, span * 1.65 + 3);
+      targetGoal = center;
+      const viewDirection = new THREE.Vector3(0.18, 0.24, 1).applyQuaternion(camera.quaternion).normalize();
+      cameraGoal = center.clone().add(viewDirection.multiplyScalar(distance));
+      if (scaleMode === "system") controls.maxDistance = Math.max(160, distance * 2.5);
+      else controls.maxDistance = Math.max(1e10, distance * 2.5);
+    }
     function resize() {
       const width = Math.max(host.clientWidth, 1);
       const height = Math.max(host.clientHeight, 1);
@@ -557,6 +575,7 @@ function App() {
       addCatalog: addCatalog,
       filter: setFilter,
       focus: focus,
+      fit: fitVisible,
       scale: setScaleMode,
       ephemeris: applyEphemeris,
       reset: function () {
@@ -1054,14 +1073,18 @@ function App() {
           setCategory(item[0]);
           const nextScale = ["planet", "moon", "asteroid", "dwarf-planet"].includes(item[0]) ? "system" : "universe";
           setViewScale(nextScale);
-          if (sceneApi.current) { sceneApi.current.scale(nextScale); sceneApi.current.filter(item[0]); }
+          if (sceneApi.current) {
+            sceneApi.current.scale(nextScale);
+            sceneApi.current.filter(item[0]);
+            if (item[0] !== "all") sceneApi.current.fit();
+          }
           if (item[0] === "exoplanet" && exoLoadedCount === 0) loadExoplanetPage(true);
         }}><span>{ICONS[item[0]]}</span>{item[1]}</button>; })}</div>
         {category === "exoplanet" && <div className="archive-toolbar"><span>{exoLoadedCount ? exoLoadedCount + " NASA archive entries loaded" : "Search the confirmed exoplanet archive"}</span><button disabled={exoLoading || (!exoHasMore && exoLoadedCount > 0)} onClick={function () { loadExoplanetPage(exoLoadedCount === 0); }}>{exoLoading ? "Loading archive…" : exoLoadedCount === 0 ? "Load NASA exoplanets ↗" : exoHasMore ? "Load next page ↗" : "All matching pages loaded"}</button></div>}
         <div className="destination-row">{visibleCatalog.slice(0, 8).map(function (item) {
           return <button key={item.id} className={"destination" + (selected && selected.id === item.id ? " chosen" : "")} onClick={function () { chooseObject(item); }}><span className={"destination-icon " + item.category} style={{ "--orb": item.color || "#9e9eff" }}><i></i></span><span className="destination-copy"><small>{String(item.type || item.category || "OBJECT").toUpperCase()}</small><strong>{item.name}</strong></span><span className="destination-arrow">↗</span></button>;
         })}</div>
-        <div className="dock-footer"><span><i></i> LIVE CATALOGS · {mappedCount} PLOTTED / {catalog.length} INDEXED</span><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><div className="scene-actions"><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(-3); }} title="Zoom in" aria-label="Zoom in">+</button><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(3); }} title="Zoom out" aria-label="Zoom out">−</button><button className={labelsOn ? "selected" : ""} onClick={toggleLabels} title="Toggle labels" aria-label="Toggle labels">T</button><button className={orbitsOn ? "selected" : ""} onClick={toggleOrbits} title="Toggle orbit paths" aria-label="Toggle orbit paths">◎</button></div></div>
+        <div className="dock-footer"><span><i></i> LIVE CATALOGS · {mappedCount} PLOTTED / {catalog.length} INDEXED</span><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><div className="scene-actions"><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(-3); }} title="Zoom in" aria-label="Zoom in">+</button><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(3); }} title="Zoom out" aria-label="Zoom out">−</button><button className={labelsOn ? "selected" : ""} onClick={toggleLabels} title="Toggle labels" aria-label="Toggle labels">T</button><button className={orbitsOn ? "selected" : ""} onClick={toggleOrbits} title="Toggle orbit paths" aria-label="Toggle orbit paths">◎</button><button onClick={function () { if (sceneApi.current) sceneApi.current.fit(); }} title="Fit visible catalog objects" aria-label="Fit visible catalog objects">⌖</button></div></div>
       </section>
       <div className="bottom-credit"><span></span> MULTI-CATALOG SKY MAP <b>/</b> MARKER SIZES EXAGGERATED FOR VISIBILITY</div>
       <div className={"toast" + (notice ? " visible" : "")} role="status">{notice}</div>
