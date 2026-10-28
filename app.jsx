@@ -769,9 +769,10 @@ function App() {
   function selectArchiveItem(item) {
     if (!item) return;
     setArchiveOpen(false);
-    if (item.catalog_source === "JPL Small-Body Database" || item.object_query) {
+    if (item.catalog_source === "JPL Small-Body Database" || item.catalog_source === "NASA/JPL Sentry" || item.object_query) {
       chooseObject(Object.assign({}, item, {
-        catalog_source: "JPL Small-Body Database",
+        object_query: item.pdes || item.object_query || item.designation,
+        catalog_source: item.catalog_source || "JPL Small-Body Database",
         pdes: item.pdes || item.object_query || item.designation,
         map_frame: "solar-system",
         system: "Solar System",
