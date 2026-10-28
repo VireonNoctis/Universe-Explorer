@@ -739,7 +739,7 @@ function App() {
       if (Array.isArray(item.position)) sceneApi.current.focus(item);
     }
     setCategory("all");
-    if (Number.isFinite(Number(item.ra_deg)) && Number.isFinite(Number(item.dec_deg))) {
+    if (item.ra_deg !== null && item.ra_deg !== undefined && item.dec_deg !== null && item.dec_deg !== undefined && Number.isFinite(Number(item.ra_deg)) && Number.isFinite(Number(item.dec_deg))) {
       const tileKey = Math.round(Number(item.ra_deg) * 2) + ":" + Math.round(Number(item.dec_deg) * 2);
       if (!skyConesRef.current.has(tileKey)) {
         skyConesRef.current.add(tileKey);
@@ -827,7 +827,7 @@ function App() {
     });
   }
   const facts = selected ? Object.assign({}, selected.facts || {}) : {};
-  if (selected && Number.isFinite(Number(selected.ra_deg)) && Number.isFinite(Number(selected.dec_deg))) {
+  if (selected && selected.ra_deg !== null && selected.ra_deg !== undefined && selected.dec_deg !== null && selected.dec_deg !== undefined && Number.isFinite(Number(selected.ra_deg)) && Number.isFinite(Number(selected.dec_deg))) {
     facts["Right ascension (ICRS)"] = Number(selected.ra_deg).toFixed(5) + "°";
     facts["Declination (ICRS)"] = Number(selected.dec_deg).toFixed(5) + "°";
   }
