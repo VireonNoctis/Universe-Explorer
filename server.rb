@@ -1133,6 +1133,124 @@ module Astra
     results.uniq { |item| item[:name].to_s.downcase }.first(24)
   end
 
+
+  def fireball_records(limit: 30, date_min: nil)
+    count = [[numeric(limit)&.to_i || 30, 5].max, 100].min
+    parameters = { limit: count, sort: '-date' }
+    begin
+      parsed_date = Date.iso8601(date_min.to_s) unless date_min.to_s.empty?
+      parameters['date-min'] = parsed_date.iso8601 if parsed_date
+    rescue Date::Error
+      return { events: [], source_status: 'invalid', error: 'date_min must use YYYY-MM-DD.' }
+    end
+    uri = URI("https://ssd-api.jpl.nasa.gov/fireball.api?#{URI.encode_www_form(parameters)}")
+    response = request(uri, 'Accept' => 'application/json', read_timeout: 12.0)
+    return { events: [], count: 0, source_status: 'unavailable' } unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    fields = Array(payload['fields']).map(&:to_s)
+    events = Array(payload['data']).filter_map do |row|
+      next unless row.is_a?(Array)
+      data = fields.zip(row).to_h
+      date = data['date'].to_s
+      next if date.empty?
+      latitude = numeric(data['lat'])
+      longitude = numeric(data['lon'])
+      altitude = numeric(data['alt'])
+      energy = numeric(data['energy'])
+      impact_energy = numeric(data['impact-e'])
+      lat_dir = data['lat-dir'].to_s
+      lon_dir = data['lon-dir'].to_s
+      latitude_label = latitude ? "#{latitude.abs.round(4)}° #{lat_dir}" : nil
+      longitude_label = longitude ? "#{longitude.abs.round(4)}° #{lon_dir}" : nil
+      {
+        id: "jpl-fireball-#{date.gsub(/[^0-9]/, '')}",
+        name: "Atmospheric fireball · #{date}",
+        type: 'Recorded atmospheric fireball', category: 'deep', color: '#ffb58e', size: 0.06,
+        position: nil, map_frame: 'earth-atmosphere', map_status: 'unplotted',
+        position_accuracy: 'Atmospheric event record, not a Solar System body position',
+        position_source: 'NASA/JPL CNEOS Fireball Data API',
+        catalog_source: 'NASA/JPL Fireball Data API', event_date_utc: date,
+        subtitle: 'Atmospheric observation · government sensor data',
+        description: 'A reported bright atmospheric event from the NASA/JPL CNEOS fireball dataset. This is an observation record, not a tracked celestial object, and it is not placed on the astronomical 3D map.',
+        facts: {
+          'Peak brightness (UTC)' => date,
+          'Latitude' => latitude_label,
+          'Longitude' => longitude_label,
+          'Altitude' => with_unit(altitude, 'km'),
+          'Radiated energy' => energy ? "#{energy} × 10¹⁰ joules" : nil,
+          'Estimated impact energy' => with_unit(impact_energy, 'kilotons TNT')
+        }.compact,
+        sources: [
+          source('CNEOS Fireball Data API', 'NASA / JPL', 'https://ssd-api.jpl.nasa.gov/doc/fireball.html'),
+          source('Fireball observation records', 'NASA / JPL CNEOS', 'https://cneos.jpl.nasa.gov/fireballs/')
+        ], related: []
+      }
+    end
+    { events: events, count: numeric(payload['count'])&.to_i || events.length,
+      source_status: 'ok', source: 'NASA/JPL CNEOS Fireball Data API',
+      note: 'Reported atmospheric observations; location, energy and altitude fields may be missing or uncertain.' }
+  rescue StandardError => e
+    warn "JPL fireball query failed: #{e.class}: #{e.message}"
+    { events: [], count: 0, source_status: 'unavailable' }
+  end
+
+  def sentry_records(limit: 250, probability_min: nil)
+    count = [[numeric(limit)&.to_i || 250, 10].max, 500].min
+    params = {}
+    probability = numeric(probability_min) unless probability_min.to_s.empty?
+    if probability
+      return { objects: [], source_status: 'invalid', error: 'Probability threshold must be between 1e-10 and 1.' } unless probability.between?(1e-10, 1.0)
+      params['ip-min'] = probability.to_s
+    end
+    uri = URI("https://ssd-api.jpl.nasa.gov/sentry.api?#{URI.encode_www_form(params)}")
+    response = request(uri, 'Accept' => 'application/json', read_timeout: 12.0)
+    return { objects: [], count: 0, source_status: 'unavailable' } unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    return { objects: [], count: 0, source_status: 'unavailable', error: payload['error'] } if payload['error']
+    records = Array(payload['data'])
+    objects = records.first(count).filter_map do |row|
+      next unless row.is_a?(Hash)
+      designation = row['des'].to_s
+      name = (row['fullname'] || row['des']).to_s
+      next if designation.empty? || name.empty?
+      probability_value = numeric(row['ip'])
+      {
+        id: "jpl-sentry-#{row['id'] || designation.gsub(/[^A-Za-z0-9]+/, '-')}",
+        name: name, type: 'Sentry monitoring record', category: 'asteroid', color: '#e6b77d', size: 0.06,
+        position: nil, map_frame: 'universe', map_status: 'unplotted',
+        position_accuracy: 'Sentry summary record is not a 3D astrometric position; use the linked orbit catalog for coordinates',
+        position_source: 'NASA/JPL CNEOS Sentry API',
+        catalog_source: 'NASA/JPL Sentry', pdes: designation, sentry_id: row['id'],
+        subtitle: "Sentry assessment · possible-impact analysis range #{row['range'] || 'not specified'}",
+        description: 'This entry is in NASA/JPL CNEOS Sentry, which tracks modeled possible future impact cases for near-Earth objects. A listing is not a prediction of an impact; estimated probabilities and other quantities are model-dependent and have significant uncertainty.',
+        facts: {
+          'Assessment range' => row['range'],
+          'Modeled impact probability' => probability_value ? probability_value.to_s : nil,
+          'Potential cases in model' => row['n_imp'],
+          'Estimated diameter' => with_unit(row['diameter'], 'km'),
+          'Absolute magnitude' => row['h'],
+          'Cumulative Palermo rating' => row['ps_cum'],
+          'Maximum Palermo rating' => row['ps_max'],
+          'Maximum Torino rating' => row['ts_max'],
+          'Last observation' => row['last_obs'],
+          'Analysis updated' => row['last_obs'] ? nil : row['pdate']
+        }.compact,
+        sources: [
+          source('Sentry record', 'NASA / JPL CNEOS', "https://ssd-api.jpl.nasa.gov/sentry.api?#{URI.encode_www_form(des: designation)}"),
+          source('JPL Small-Body Database', 'NASA / JPL', "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=#{URI.encode_www_form_component(designation)}"),
+          source('Sentry API documentation', 'NASA / JPL', 'https://ssd-api.jpl.nasa.gov/doc/sentry.html')
+        ], related: []
+      }
+    end
+    { objects: objects, count: numeric(payload['count'])&.to_i || records.length,
+      source_status: 'ok', source: 'NASA/JPL CNEOS Sentry API',
+      truncated: records.length > count,
+      note: 'Monitoring table of modelled possible-impact cases. Listing an object does not mean an impact is predicted; probabilities are uncertain and time-dependent.' }
+  rescue StandardError => e
+    warn "JPL Sentry query failed: #{e.class}: #{e.message}"
+    { objects: [], count: 0, source_status: 'unavailable' }
+  end
+
   def ephemeris_snapshot
     EPHEMERIS_MUTEX.synchronize do
       return EPHEMERIS_CACHE[:positions] if Time.now - EPHEMERIS_CACHE[:fetched_at] < 900 && !EPHEMERIS_CACHE[:positions].empty?
@@ -1234,6 +1352,8 @@ class AstraServer < Sinatra::Base
         { id: 'nasa-exoplanet-archive', name: 'NASA Exoplanet Archive', scope: 'Confirmed exoplanets and host-system parameters', url: 'https://exoplanetarchive.ipac.caltech.edu/' },
         { id: 'jpl-sbdb', name: 'JPL Small-Body Database', scope: 'Paged asteroid/comet records, orbital parameters and object detail lookup', url: 'https://ssd.jpl.nasa.gov/' },
         { id: 'jpl-cad', name: 'JPL Close-Approach Data', scope: 'Upcoming Earth close approaches, distance and relative velocity data', url: 'https://ssd-api.jpl.nasa.gov/doc/cad.html' },
+        { id: 'jpl-fireball', name: 'JPL CNEOS Fireball Data', scope: 'Reported atmospheric fireball event observations', url: 'https://ssd-api.jpl.nasa.gov/doc/fireball.html' },
+        { id: 'jpl-sentry', name: 'JPL CNEOS Sentry', scope: 'Modelled potential-impact monitoring records; not impact predictions', url: 'https://ssd-api.jpl.nasa.gov/doc/sentry.html' },
         { id: 'jpl-horizons', name: 'JPL Horizons', scope: 'Date-dependent Solar System vectors and ephemerides', url: 'https://ssd-api.jpl.nasa.gov/doc/horizons.html' },
         { id: 'gaia-dr3', name: 'ESA Gaia DR3', scope: 'Astrometry and parallax distances for bounded samples and sky cones', url: 'https://gea.esac.esa.int/archive/' },
         { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', scope: 'Astronomical name resolution and coordinates', url: 'https://cds.unistra.fr/cgi-bin/nph-sesame/' },
@@ -1316,6 +1436,31 @@ class AstraServer < Sinatra::Base
         source: 'https://gea.esac.esa.int/archive/' }.to_json
     end
   end
+  get '/api/fireballs' do
+    content_type :json
+    cache_control :no_store
+    limit = params['limit'].to_s.empty? ? 30 : params['limit'].to_i
+    halt 400, { error: 'Limit must be between 5 and 100.' }.to_json unless limit.between?(5, 100)
+    date_min = params['date-min'].to_s.strip
+    halt 400, { error: 'date-min must use YYYY-MM-DD.' }.to_json if date_min.length > 10
+    result = Astra.fireball_records(limit: limit, date_min: date_min)
+    status 503 if result[:source_status] == 'unavailable'
+    status 400 if result[:source_status] == 'invalid'
+    result.to_json
+  end
+
+  get '/api/impact-monitor' do
+    content_type :json
+    cache_control :no_store
+    limit = params['limit'].to_s.empty? ? 250 : params['limit'].to_i
+    probability = params['probability-min'].to_s.strip
+    halt 400, { error: 'Limit must be between 10 and 500.' }.to_json unless limit.between?(10, 500)
+    result = Astra.sentry_records(limit: limit, probability_min: probability)
+    status 503 if result[:source_status] == 'unavailable'
+    status 400 if result[:source_status] == 'invalid'
+    result.to_json
+  end
+
   get '/api/ephemeris' do
     content_type :json
     cache_control :no_store
