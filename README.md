@@ -9,7 +9,7 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Interactive 3D scene:** drag to orbit, scroll to zoom, click markers, focus an object, toggle labels and orbit paths.
 - **Two spatial frames:** the universe map uses Cartesian coordinates in light-years where a reliable distance and sky position exist. The Solar System view uses astronomical units (AU), with current vectors requested from JPL Horizons when available.
 - **Solar System ephemerides:** fetches Horizons vectors for supported planets, moons, dwarf planets and small bodies. An approximate mean-orbit layout is available if live ephemerides cannot be retrieved.
-- **Exoplanet discovery:** searches NASA Exoplanet Archive's `pscomppars` table for planet/host matches and published parameters.
+- **Exoplanet discovery:** searches NASA Exoplanet Archive\'s `pscomppars` table for planet/host matches and published parameters; the Exoplanet category can also page through archive records.
 - **Small-body search:** queries NASA/JPL's Small-Body Database for matching asteroids and comets, and requests a Horizons vector where a usable identifier is available.
 - **Stellar samples and on-demand sky queries:** queries ESA Gaia DR3 for a bright all-sky sample, then requests additional sources around a selected sky direction. Parallax-based distances are estimated only for positive, quality-filtered parallaxes.
 - **Astronomical name resolution:** queries CDS Sesame (SIMBAD/NED/VizieR resolver) and plots results only when a usable distance is available. Coordinates without a reliable distance remain searchable but unplotted.
@@ -67,7 +67,7 @@ No HTML app file or JavaScript package manifest is required. Sinatra generates t
 | `GET /api/search?q=TRAPPIST-1` | Searches local entries and live NASA Exoplanet Archive, JPL SBDB, CDS Sesame and Wikipedia results |
 | `GET /api/object/:id` | Retrieves a curated record by ID |
 | `GET /api/lookup?title=Andromeda%20Galaxy` | Returns a curated record or a supplementary Wikipedia summary |
-| `GET /api/sky?limit=450` | Returns a bounded bright-star sample from Gaia DR3 (not the entire archive) |
+| `GET /api/archive/exoplanets?limit=40&after=...&q=...` | Cursor-paginates records from NASA Exoplanet Archive `pscomppars` (confirmed planets; not every object type) |\n| `GET /api/sky?limit=450` | Returns a bounded bright-star sample from Gaia DR3 (not the entire archive) |
 | `GET /api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150` | Returns a bounded Gaia DR3 sky-cone query in ICRS coordinates |
 | `GET /api/ephemeris` | Returns cached/current JPL Horizons vectors for supported Solar System bodies |
 | `GET /api/source-search?q=supernova` | Returns source links for NASA, ESA, Exoplanet Archive, SIMBAD and Wikipedia |
