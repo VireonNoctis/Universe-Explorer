@@ -60,6 +60,7 @@ module Astra
     'ganymede' => '503', 'titan' => '606', 'enceladus' => '602', 'halleys-comet' => 'DES=1P/Halley;'
   }.freeze
   EPHEMERIS_MUTEX = Mutex.new
+  JPL_REQUEST_MUTEX = Mutex.new
   EPHEMERIS_CACHE = { fetched_at: Time.at(0), positions: {} }
 
   def orbital_position_au(distance_au, phase_deg)
@@ -444,7 +445,12 @@ module Astra
     request = Net::HTTP::Get.new(uri)
     request['User-Agent'] = 'AstraUniverseExplorer/1.1 (educational astronomy catalog; contact: repository owner)'
     extra_headers.each { |key, value| request[key] = value }
-    http.request(request)
+    # JPL's public API fair-use policy asks clients to issue one API request at a time.
+    if uri.host == 'ssd-api.jpl.nasa.gov'
+      JPL_REQUEST_MUTEX.synchronize { http.request(request) }
+    else
+      http.request(request)
+    end
   rescue StandardError => e
     warn "Astra network request failed: #{e.class}: #{e.message}"
     nil
