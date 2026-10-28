@@ -38,6 +38,8 @@ function App() {
   const [archiveKind, setArchiveKind] = useState("all");
   const [archiveNeoOnly, setArchiveNeoOnly] = useState(false);
   const [archiveQuery, setArchiveQuery] = useState("");
+  const [archiveMediaQuery, setArchiveMediaQuery] = useState("");
+  const [archiveMediaType, setArchiveMediaType] = useState("image");
   const [approachDays, setApproachDays] = useState("90");
   const [approachDistance, setApproachDistance] = useState("0.05");
   const [fireballDateMin, setFireballDateMin] = useState("");
@@ -680,6 +682,9 @@ function App() {
       url = "/api/fireballs?limit=50" + (fireballDateMin ? "&date-min=" + encodeURIComponent(fireballDateMin) : "");
     } else if (target === "impact-monitor") {
       url = "/api/impact-monitor?limit=250" + (sentryProbabilityMin ? "&probability-min=" + encodeURIComponent(sentryProbabilityMin) : "");
+    } else if (target === "media") {
+      const mediaTerm = archiveMediaQuery.trim() || (selected && selected.name) || "galaxy";
+      url = "/api/media?q=" + encodeURIComponent(mediaTerm) + "&limit=12&type=" + encodeURIComponent(archiveMediaType);
     } else {
       setArchiveLoading(false);
       return;
@@ -691,7 +696,7 @@ function App() {
       })
       .then(function (data) {
         if (data.source_status === "unavailable") throw new Error("This archive is temporarily unavailable. Try again shortly.");
-        const incoming = ["close-approaches", "fireballs"].includes(target) ? (data.events || []) : (data.objects || []);
+        const incoming = ["close-approaches", "fireballs"].includes(target) ? (data.events || []) : target === "media" ? (data.items || []) : (data.objects || []);
         setArchiveRows(function (previous) {
           const base = restart ? [] : previous;
           const ids = new Set(base.map(function (item) { return item.id; }));
@@ -700,13 +705,13 @@ function App() {
         if (target === "small-bodies") setArchiveOffset(startOffset + incoming.length);
         if (target === "exoplanets") setArchiveCursor(data.next_cursor || "");
         setArchiveHasMore(target === "small-bodies" || target === "exoplanets" ? Boolean(data.has_more) : false);
-        if (!["close-approaches", "fireballs"].includes(target)) {
+        if (!["close-approaches", "fireballs", "media"].includes(target)) {
           setCatalog(function (previous) {
             const ids = new Set(previous.map(function (item) { return item.id; }));
             return previous.concat(incoming.filter(function (item) { return !ids.has(item.id); }));
           });
         }
-        setApiStatus(target === "exoplanets" ? "NASA EXOPLANET ARCHIVE" : target === "small-bodies" || target === "close-approaches" || target === "fireballs" || target === "impact-monitor" ? "NASA/JPL DATA" : "ESA GAIA DR3");
+        setApiStatus(target === "exoplanets" ? "NASA EXOPLANET ARCHIVE" : target === "small-bodies" || target === "close-approaches" || target === "fireballs" || target === "impact-monitor" ? "NASA/JPL DATA" : target === "media" ? "NASA MEDIA LIBRARY" : "ESA GAIA DR3");
         if (!incoming.length) setArchiveError("No records were returned for this page or filter. Try different search criteria.");
       })
       .catch(function (error) { setArchiveError(error.message || "Could not reach this source."); })
@@ -936,6 +941,7 @@ function App() {
           <button className={archiveMode === "gaia" ? "active" : ""} onClick={function () { setArchiveMode("gaia"); loadArchive("gaia", true); }} disabled={archiveLoading}>Gaia stars</button>
           <button className={archiveMode === "fireballs" ? "active" : ""} onClick={function () { setArchiveMode("fireballs"); loadArchive("fireballs", true); }} disabled={archiveLoading}>Fireballs</button>
           <button className={archiveMode === "impact-monitor" ? "active" : ""} onClick={function () { setArchiveMode("impact-monitor"); loadArchive("impact-monitor", true); }} disabled={archiveLoading}>Sentry monitor</button>
+          <button className={archiveMode === "media" ? "active" : ""} onClick={function () { setArchiveMode("media"); loadArchive("media", true); }} disabled={archiveLoading}>NASA media</button>
         </div>
         {archiveMode === "coverage" && <div className="coverage-view">
           <div className="archive-intro"><span>ARCHIVE STATUS</span><h3>Many catalogs. Different skies.</h3><p>Counts below are source-specific and overlap. A source marked queryable is available for bounded searches—not downloaded in full.</p><button disabled={coverageLoading} onClick={loadCoverage}><span>↻</span> {coverageLoading ? "Checking archives…" : "Refresh source status"}</button></div>
@@ -973,16 +979,30 @@ function App() {
           <button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("fireballs", true); }}>{archiveLoading ? "Querying CNEOS…" : "Refresh fireball observations ↗"}</button>
           <div className="archive-help">Reported atmospheric observations from government sensors. Not tracked Solar System bodies; locations and energy estimates may be incomplete.</div>
         </div>}
+        {archiveMode === "media" && <div className="archive-controls">
+          <form className="archive-search-form" onSubmit={function (event) { event.preventDefault(); loadArchive("media", true); }}>
+            <input value={archiveMediaQuery} onChange={function (event) { setArchiveMediaQuery(event.target.value); }} placeholder="Search NASA imagery by object or mission…" aria-label="Search NASA image library" />
+            <button type="submit" disabled={archiveLoading}>Search</button>
+          </form>
+          <div className="archive-filter-grid media-type-filter"><label>Media type<select value={archiveMediaType} onChange={function (event) { setArchiveMediaType(event.target.value); }}><option value="image">Images</option><option value="video">Videos</option><option value="audio">Audio</option></select></label><span className="archive-media-provider">NASA Image and Video Library · public API</span></div>
+          <div className="archive-help">Visual source results. Thumbnails and descriptions come from NASA’s media index; they do not determine an object’s measured location or scale.</div>
+        </div>}
         {archiveMode === "impact-monitor" && <div className="archive-controls">
           <label className="archive-date-filter">Minimum modeled impact probability<select value={sentryProbabilityMin} onChange={function (event) { setSentryProbabilityMin(event.target.value); }}><option value="">All entries returned by Sentry</option><option value="1e-7">1 in 10 million or greater</option><option value="1e-6">1 in 1 million or greater</option><option value="1e-5">1 in 100,000 or greater</option><option value="1e-4">1 in 10,000 or greater</option><option value="1e-3">1 in 1,000 or greater</option></select></label>
           <button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("impact-monitor", true); }}>{archiveLoading ? "Querying Sentry…" : "Refresh Sentry monitoring ↗"}</button>
           <div className="archive-help">Sentry lists modeled possible-impact cases—not predictions that an impact will occur. Probabilities and ratings are uncertain and time-dependent; read the original case before interpreting a value.</div>
         </div>}
-        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "close-approaches" ? "UPCOMING EVENTS" : archiveMode === "fireballs" ? "ATMOSPHERIC OBSERVATIONS" : archiveMode === "impact-monitor" ? "MODELED MONITORING CASES" : "ARCHIVE RECORDS"}</span><span>{archiveRows.length.toLocaleString()} LOADED</span></div>
+        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "close-approaches" ? "UPCOMING EVENTS" : archiveMode === "fireballs" ? "ATMOSPHERIC OBSERVATIONS" : archiveMode === "impact-monitor" ? "MODELED MONITORING CASES" : archiveMode === "media" ? "NASA MEDIA RESULTS" : "ARCHIVE RECORDS"}</span><span>{archiveRows.length.toLocaleString()} LOADED</span></div>
         {archiveMode !== "coverage" && <div className="archive-results">
           {archiveLoading && !archiveRows.length && <div className="archive-empty"><span className="spinner"></span> Querying the remote catalog…</div>}
           {!archiveLoading && !archiveRows.length && !archiveError && <div className="archive-empty">Choose a query above to discover records from this source.</div>}
           {archiveRows.map(function (item) {
+            if (archiveMode === "media") {
+              return <a className="archive-media-card" key={item.id} href={item.page_url} target="_blank" rel="noopener noreferrer">
+                <span className="archive-media-thumb">{item.thumbnail_url ? <img src={item.thumbnail_url} loading="lazy" alt={item.title || "NASA media preview"} /> : <span>NO PREVIEW</span>}</span>
+                <span className="archive-media-copy"><strong>{item.title || item.name}</strong><small>{[item.center, item.date_created].filter(Boolean).join(" · ") || "NASA Image and Video Library"}</small><em>{item.description || item.media_type || "NASA media result"}</em></span><span className="archive-record-arrow">↗</span>
+              </a>;
+            }
             const isEvent = archiveMode === "close-approaches";
             const isFireball = archiveMode === "fireballs";
             const isSentry = archiveMode === "impact-monitor";
