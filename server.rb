@@ -879,8 +879,9 @@ module Astra
     {
       id: "jpl-sbdb-#{(record['spkid'] || record['des'] || name).to_s.gsub(/[^A-Za-z0-9]+/, '-')}",
       name: name, type: 'Small Solar System body', category: category, color: '#9ed7da',
-      size: 0.19, position: position, local_position_au: position && position.map { |component| component * AU_PER_LIGHT_YEAR },
+      size: 0.09, position: position, local_position_au: position && position.map { |component| component * AU_PER_LIGHT_YEAR },
       map_frame: 'solar-system', map_status: position ? 'plotted' : 'unplotted',
+      catalog_source: 'JPL Small-Body Database', pdes: record['des'] || record['pdes'], spkid: record['spkid'],
       position_accuracy: position ? 'JPL Horizons ICRF vector at current UTC date' : 'Current heliocentric vector not available; object is searchable but not plotted',
       position_source: 'JPL Small-Body Database / Horizons',
       subtitle: "JPL Small-Body Database · #{record['spkid'] || record['des']}",
@@ -998,7 +999,7 @@ module Astra
 
     adql = "SELECT TOP #{count} source_id,ra,dec,parallax,phot_g_mean_mag,bp_rp FROM gaiadr3.gaia_source WHERE parallax > 0.2 AND parallax_over_error > 5 AND phot_g_mean_mag < 9.0 ORDER BY phot_g_mean_mag ASC"
     uri = URI("https://gea.esac.esa.int/tap-server/tap/sync?#{URI.encode_www_form(REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'json', QUERY: adql)}")
-    response = request(uri, 'Accept' => 'application/json')
+    response = request(uri, { 'Accept' => 'application/json' }, read_timeout: 18.0)
     return cache || [] unless response && response.code.to_i == 200
     payload = JSON.parse(response.body)
     fields = Array(payload['metadata']).map { |field| field['name'].to_s }
