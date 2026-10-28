@@ -54,7 +54,7 @@ a { color: inherit; text-decoration: none; }
 .result-icon { display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid rgba(176, 184, 235, .2); border-radius: 9px; color: #c4bdff; background: rgba(128, 132, 206, .09); font-size: 17px; }
 .result-icon.star { color: #ffd3a2; }
 .result-icon.exoplanet, .result-icon.moon { color: #91e8ee; }
-.result-icon.galaxy, .result-icon.nebula, .result-icon["black-hole"] { color: #c0a5ff; }
+.result-icon.galaxy, .result-icon.nebula, .result-icon.black-hole { color: #c0a5ff; }
 .result-text { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .result-text strong { overflow: hidden; color: #edf0ff; font-size: 12px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
 .result-text small { overflow: hidden; color: #8994b5; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
