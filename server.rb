@@ -526,8 +526,8 @@ module Astra
         id: id, name: name, type: 'Exoplanet', category: 'exoplanet', color: '#6bdce1',
         size: 0.22, position: position, ra_deg: ra, dec_deg: dec, distance_ly: distance_ly,
         map_frame: 'universe', map_status: position ? 'plotted' : 'unplotted',
-        position_accuracy: position ? 'Host-star coordinates and distance from NASA Exoplanet Archive' : 'Archive record does not provide a complete coordinate + distance pair',
-        position_source: 'NASA Exoplanet Archive · Planetary Systems Composite Parameters',
+        position_accuracy: position ? 'Host-star system coordinates and distance from NASA Exoplanet Archive; orbital offset from the host is unresolved at this scale' : 'Archive record does not provide a complete host-coordinate + distance pair',
+        position_source: 'NASA Exoplanet Archive · host-system astrometry; exoplanet orbital offset is unresolved',
         subtitle: host.empty? ? 'Confirmed planet · NASA Exoplanet Archive' : "Orbits #{host}",
         system: host, host: host, description: "#{name} is listed in NASA’s Planetary Systems Composite Parameters catalog. Its discovery metadata and published physical parameters are shown below; unknown quantities are omitted.",
         facts: facts, sources: sources, related: []
