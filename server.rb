@@ -10,18 +10,128 @@ require 'sinatra/base'
 module Astra
   module_function
 
+  AU_PER_LIGHT_YEAR = 63_241.077084
+  OBLIQUITY_RAD = 23.4392911 * Math::PI / 180.0
+
+  SPATIAL_DATA = {
+    'sun' => { distance_ly: 0.0, local_position_au: [0.0, 0.0, 0.0], map_frame: 'solar-system', source: 'Solar System barycentric origin' },
+    'mercury' => { distance_au: 0.3871, phase_deg: 14, orbit_radius_au: 0.3871, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'venus' => { distance_au: 0.7233, phase_deg: 81, orbit_radius_au: 0.7233, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'earth' => { distance_au: 1.0000, phase_deg: 181, orbit_radius_au: 1.0000, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'moon' => { parent_id: 'earth', offset_au: [0.00257, 0.0, 0.0], distance_au: 1.00257, map_frame: 'solar-system', source: 'Approximate Earth–Moon separation; JPL Horizons ephemeris refreshes position' },
+    'mars' => { distance_au: 1.5237, phase_deg: 231, orbit_radius_au: 1.5237, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'ceres' => { distance_au: 2.7675, phase_deg: 143, orbit_radius_au: 2.7675, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'jupiter' => { distance_au: 5.2028, phase_deg: 291, orbit_radius_au: 5.2028, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'europa' => { parent_id: 'jupiter', offset_au: [0.00314, 0.0, 0.0], distance_au: 5.2059, map_frame: 'solar-system', source: 'Approximate moon orbit; JPL Horizons ephemeris refreshes position' },
+    'ganymede' => { parent_id: 'jupiter', offset_au: [0.00716, 0.0, 0.0], distance_au: 5.21, map_frame: 'solar-system', source: 'Approximate moon orbit; JPL Horizons ephemeris refreshes position' },
+    'saturn' => { distance_au: 9.5388, phase_deg: 340, orbit_radius_au: 9.5388, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'titan' => { parent_id: 'saturn', offset_au: [0.00817, 0.0, 0.0], distance_au: 9.547, map_frame: 'solar-system', source: 'Approximate moon orbit; JPL Horizons ephemeris refreshes position' },
+    'enceladus' => { parent_id: 'saturn', offset_au: [0.00159, 0.0, 0.0], distance_au: 9.5404, map_frame: 'solar-system', source: 'Approximate moon orbit; JPL Horizons ephemeris refreshes position' },
+    'uranus' => { distance_au: 19.191, phase_deg: 12, orbit_radius_au: 19.191, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'neptune' => { distance_au: 30.07, phase_deg: 81, orbit_radius_au: 30.07, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'pluto' => { distance_au: 39.482, phase_deg: 201, orbit_radius_au: 39.482, map_frame: 'solar-system', source: 'Mean orbital elements; JPL Horizons ephemeris refreshes position' },
+    'halleys-comet' => { distance_au: 17.8, phase_deg: 73, orbit_radius_au: 17.8, map_frame: 'solar-system', source: 'Orbit semi-major axis; use JPL Horizons for date-specific position' },
+
+    'proxima-centauri' => { ra_deg: 217.4292, dec_deg: -62.6795, distance_ly: 4.2465, source: 'ICRS coordinates and measured distance; values are rounded' },
+    'proxima-centauri-b' => { ra_deg: 217.4292, dec_deg: -62.6795, distance_ly: 4.2465, host_id: 'proxima-centauri', source: 'Host-star position at interstellar scale; orbital offset is unresolved here' },
+    'sirius' => { ra_deg: 101.2872, dec_deg: -16.7161, distance_ly: 8.60, source: 'ICRS coordinates and measured distance; values are rounded' },
+    'betelgeuse' => { ra_deg: 88.7929, dec_deg: 7.4071, distance_ly: 548.0, source: 'ICRS coordinates; distance is uncertain and varies by study' },
+    'vega' => { ra_deg: 279.2347, dec_deg: 38.7837, distance_ly: 25.04, source: 'ICRS coordinates and measured distance; values are rounded' },
+    'trappist-1e' => { ra_deg: 346.622, dec_deg: -5.0415, distance_ly: 40.0, host_id: 'trappist-1', source: 'Host-star position at interstellar scale; orbital offset is unresolved here' },
+    'kepler-186f' => { ra_deg: 298.65, dec_deg: 43.95, distance_ly: 490.0, host_id: 'kepler-186', source: 'Approximate host-star coordinates and distance; orbital offset is unresolved here' },
+    'kepler-452-b' => { ra_deg: 296.004, dec_deg: 44.277, distance_ly: 1_400.0, host_id: 'kepler-452', source: 'Approximate host-star coordinates and distance; orbital offset is unresolved here' },
+    'milky-way' => { ra_deg: 266.4168, dec_deg: -29.0078, distance_ly: 26_000.0, source: 'Galactic-centre direction and approximate Sun-to-centre distance' },
+    'sagittarius-a-star' => { ra_deg: 266.4168, dec_deg: -29.0078, distance_ly: 26_000.0, source: 'Galactic-centre coordinates and approximate distance; black hole is at the galactic centre' },
+    'andromeda' => { ra_deg: 10.6847, dec_deg: 41.2690, distance_ly: 2_537_000.0, source: 'ICRS coordinates and approximate distance' },
+    'triangulum-galaxy' => { ra_deg: 23.4621, dec_deg: 30.6600, distance_ly: 2_730_000.0, source: 'ICRS coordinates and approximate distance' },
+    'sombrero-galaxy' => { ra_deg: 189.9975, dec_deg: -11.6231, distance_ly: 29_300_000.0, source: 'ICRS coordinates and approximate distance' },
+    'orion-nebula' => { ra_deg: 83.8221, dec_deg: -5.3911, distance_ly: 1_344.0, source: 'ICRS coordinates and approximate distance' },
+    'crab-nebula' => { ra_deg: 83.6331, dec_deg: 22.0145, distance_ly: 6_523.0, source: 'ICRS coordinates and approximate distance' },
+    'pillars-of-creation' => { ra_deg: 274.7, dec_deg: -13.8, distance_ly: 6_500.0, source: 'Approximate region centre and distance' },
+    'm87-star' => { ra_deg: 187.7059, dec_deg: 12.3911, distance_ly: 53_500_000.0, source: 'Host galaxy coordinates and approximate distance' }
+  }.freeze
+
+  EPHEMERIS_BODY_IDS = {
+    'mercury' => '199', 'venus' => '299', 'earth' => '399', 'moon' => '301',
+    'mars' => '499', 'jupiter' => '599', 'saturn' => '699', 'uranus' => '799',
+    'neptune' => '899', 'pluto' => '999', 'ceres' => '1;', 'europa' => '502',
+    'ganymede' => '503', 'titan' => '606', 'enceladus' => '602', 'halleys-comet' => 'DES=1P/Halley;'
+  }.freeze
+  EPHEMERIS_MUTEX = Mutex.new
+  EPHEMERIS_CACHE = { fetched_at: Time.at(0), positions: {} }
+
+  def orbital_position_au(distance_au, phase_deg)
+    angle = phase_deg.to_f * Math::PI / 180.0
+    x = distance_au.to_f * Math.cos(angle)
+    ecliptic_y = distance_au.to_f * Math.sin(angle)
+    # Rotate the ecliptic plane into the equatorial frame; y is vertical in Three.js.
+    [x, ecliptic_y * Math.sin(OBLIQUITY_RAD), -ecliptic_y * Math.cos(OBLIQUITY_RAD)]
+  end
+
+  def radec_position(ra_deg, dec_deg, distance_ly)
+    return nil if ra_deg.nil? || dec_deg.nil? || distance_ly.nil?
+    return nil unless [ra_deg, dec_deg, distance_ly].all? { |value| value.to_f.finite? }
+    distance = distance_ly.to_f
+    return nil if distance.negative? || distance > 100_000_000_000.0
+
+    ra = ra_deg.to_f * Math::PI / 180.0
+    dec = dec_deg.to_f * Math::PI / 180.0
+    [distance * Math.cos(dec) * Math.cos(ra),
+     distance * Math.sin(dec),
+     -distance * Math.cos(dec) * Math.sin(ra)]
+  end
+
+  def add_spatial_metadata(item)
+    data = SPATIAL_DATA[item[:id]] || {}
+    local_au = if data[:local_position_au]
+                 data[:local_position_au]
+               elsif data[:parent_id]
+                 parent = SPATIAL_DATA[data[:parent_id]] || {}
+                 parent_au = parent[:local_position_au] || orbital_position_au(parent[:distance_au] || 0, parent[:phase_deg] || 0)
+                 offset = data[:offset_au] || [0, 0, 0]
+                 3.times.map { |index| parent_au[index].to_f + offset[index].to_f }
+               elsif data[:distance_au]
+                 orbital_position_au(data[:distance_au], data[:phase_deg] || 0)
+               end
+
+    position_ly = if data.key?(:distance_ly)
+                    if data[:distance_ly].to_f.zero?
+                      [0.0, 0.0, 0.0]
+                    else
+                      radec_position(data[:ra_deg], data[:dec_deg], data[:distance_ly])
+                    end
+                  elsif local_au
+                    local_au.map { |coordinate| coordinate.to_f / AU_PER_LIGHT_YEAR }
+                  end
+
+    item[:position] = position_ly
+    item[:local_position_au] = local_au if local_au
+    item[:ra_deg] = data[:ra_deg] if data.key?(:ra_deg)
+    item[:dec_deg] = data[:dec_deg] if data.key?(:dec_deg)
+    item[:distance_ly] = data[:distance_ly] if data.key?(:distance_ly)
+    item[:distance_from_sun_au] = data[:distance_au] if data.key?(:distance_au)
+    item[:orbit_radius_au] = data[:orbit_radius_au] if data.key?(:orbit_radius_au)
+    item[:host_id] = data[:host_id] if data[:host_id]
+    item[:map_frame] = data[:map_frame] || (local_au ? 'solar-system' : 'universe')
+    item[:position_source] = data[:source] || 'Coordinates and distance are not available for a physical placement'
+    item[:position_accuracy] = position_ly ? 'catalog-position' : 'unavailable'
+    item[:map_status] = position_ly ? 'plotted' : 'unplotted'
+    item[:local_ephemeris_available] = !!EPHEMERIS_BODY_IDS[item[:id]]
+    item
+  end
+
   def source(label, publisher, url)
     { label: label, publisher: publisher, url: url }
   end
 
-  def object(id, name, type, category, color, size, position, system, subtitle, description, facts, sources, related, texture_colors = nil)
+  def object(id, name, type, category, color, size, _initial_position, system, subtitle, description, facts, sources, related, texture_colors = nil)
     item = {
       id: id, name: name, type: type, category: category, color: color,
-      size: size, position: position, system: system, subtitle: subtitle,
-      description: description, facts: facts, sources: sources, related: related
+      system: system, subtitle: subtitle, description: description,
+      facts: facts, sources: sources, related: related
     }
     item[:textureColors] = texture_colors if texture_colors
-    item
+    add_spatial_metadata(item)
   end
 
   NASA = 'https://science.nasa.gov/'.freeze
@@ -318,15 +428,19 @@ module Astra
   end
 
   def request(uri, extra_headers = {})
-    return nil unless uri.is_a?(URI::HTTPS) && uri.host == 'en.wikipedia.org'
+    allowed_hosts = %w[
+      en.wikipedia.org exoplanetarchive.ipac.caltech.edu
+      ssd-api.jpl.nasa.gov ssd.jpl.nasa.gov cds.unistra.fr gea.esac.esa.int
+    ]
+    return nil unless uri.is_a?(URI::HTTPS) && allowed_hosts.include?(uri.host)
 
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
-    http.open_timeout = 2.5
-    http.read_timeout = 3.5
-    http.write_timeout = 2.5 if http.respond_to?(:write_timeout=)
+    http.open_timeout = 2.0
+    http.read_timeout = 3.0
+    http.write_timeout = 2.0 if http.respond_to?(:write_timeout=)
     request = Net::HTTP::Get.new(uri)
-    request['User-Agent'] = 'AstraUniverseExplorer/1.0 (educational astronomy catalog)'
+    request['User-Agent'] = 'AstraUniverseExplorer/1.1 (educational astronomy catalog; contact: repository owner)'
     extra_headers.each { |key, value| request[key] = value }
     http.request(request)
   rescue StandardError => e
