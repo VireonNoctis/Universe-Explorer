@@ -364,6 +364,7 @@ function App() {
     }
     function addCatalog(items) {
       (items || []).forEach(function (item) { if (Array.isArray(item.position)) makeNode(item); });
+      if (Object.keys(ephemerisRef.current || {}).length) applyEphemeris(ephemerisRef.current);
       setFilter("all");
     }
     function isSolarSystem(node) {
@@ -432,6 +433,14 @@ function App() {
     function render() {
       raf = requestAnimationFrame(render);
       controls.update();
+      const viewRange = Math.max(camera.position.distanceTo(controls.target), 0.001);
+      const nearPlane = Math.max(1e-8, viewRange * 1e-6);
+      const farPlane = Math.max(1200, viewRange * 100);
+      if (Math.abs(camera.near - nearPlane) > camera.near * 0.08 || Math.abs(camera.far - farPlane) > camera.far * 0.08) {
+        camera.near = nearPlane;
+        camera.far = farPlane;
+        camera.updateProjectionMatrix();
+      }
       if (cameraGoal && targetGoal) {
         camera.position.lerp(cameraGoal, 0.055);
         controls.target.lerp(targetGoal, 0.055);
@@ -502,14 +511,15 @@ function App() {
       },
       zoom: function (delta) {
         const direction = camera.position.clone().sub(controls.target).normalize();
-        const adjusted = scaleMode === "system" ? delta : delta * Math.max(1, camera.position.distanceTo(controls.target) * 0.1);
+        const range = camera.position.distanceTo(controls.target);
+        const adjusted = scaleMode === "system" ? delta : delta * Math.max(0.5, range * 0.12);
         camera.position.addScaledVector(direction, adjusted);
       },
       labels: function (value) {
         nodes.forEach(function (node) { node.label.style.display = value && node.group.visible ? "flex" : "none"; });
       },
       orbits: function (value) {
-        orbits.forEach(function (orbit) { orbit.visible = value; });
+        orbits.forEach(function (orbit) { orbit.visible = value && scaleMode === "system"; });
       },
       dispose: function () {
         cancelAnimationFrame(raf);
@@ -657,8 +667,8 @@ function App() {
           <span className="portrait-caption">{String(selected.system || selected.category || "DEEP SPACE").toUpperCase()} / FIELD NOTES</span>
         </div>
         <div className="detail-tabs"><button className={activeTab === "Overview" ? "active" : ""} onClick={function () { setActiveTab("Overview"); }}>Overview</button><button className={activeTab === "Measurements" ? "active" : ""} onClick={function () { setActiveTab("Measurements"); }}>Measurements</button><button className={activeTab === "Sources" ? "active" : ""} onClick={function () { setActiveTab("Sources"); }}>Sources <span>{sources.length}</span></button></div>
-        <div className={"coordinate-note " + (selected.map_status === "unplotted" ? "unplotted" : "plotted")}>
-          <span></span><div><strong>{selected.map_status === "unplotted" ? "Not placed on the 3D map" : (viewScale === "system" ? "Solar System spatial frame · AU" : "Universe spatial frame · light-years")}</strong><small>{selected.map_status === "unplotted" ? (selected.position_accuracy || "The source does not provide a reliable 3D position; no coordinates have been invented.") : (selected.position_source || "Catalog coordinates and distance")}</small></div>
+        <div className={"coordinate-note " + ((!Array.isArray(selected.position) || selected.map_status === "unplotted") ? "unplotted" : "plotted")}>
+          <span></span><div><strong>{(!Array.isArray(selected.position) || selected.map_status === "unplotted") ? "Not placed on the 3D map" : (viewScale === "system" ? "Solar System spatial frame · AU" : "Universe spatial frame · light-years")}</strong><small>{(!Array.isArray(selected.position) || selected.map_status === "unplotted") ? (selected.position_accuracy || "The source does not provide a reliable 3D position; no coordinates have been invented.") : (selected.position_source || "Catalog coordinates and distance")}</small></div>
         </div>
         {loadingDetail && <div className="inline-loading"><span className="spinner"></span> Fetching reference details…</div>}
         {activeTab === "Overview" && <><p className="object-description">{description || "This entry is indexed for exploration. Open the references below for additional scientific context."}</p><div className="section-title"><span>AT A GLANCE</span><i></i><small>KEY FACTS</small></div><div className="fact-grid">
