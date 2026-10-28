@@ -459,6 +459,332 @@ module Astra
       'exoplanet' => '#6bdce1', 'star' => '#ffbd83', 'galaxy' => '#b6a3ff',
       'nebula' => '#a48bff', 'deep' => '#93a6ff', 'black-hole' => '#bd92ff', 'asteroid' => '#97d8d9' }[category] || '#a7b3ff'
   end
+
+  def safe_catalog_query(query)
+    query.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '')
+         .gsub(/[^A-Za-z0-9 ._+\-]/, ' ').squeeze(' ').strip[0, 90]
+  end
+
+  def exoplanet_search(query, limit = 8)
+    safe = safe_catalog_query(query)
+    return [] if safe.length < 2
+    escaped = safe.gsub("'", "''")
+    adql = "select top #{[[limit.to_i, 1].max, 20].min} pl_name,hostname,discoverymethod,disc_year,sy_dist,pl_orbper,pl_rade,pl_bmasse,ra,dec from pscomppars where pl_name like '%#{escaped}%' or hostname like '%#{escaped}%' order by pl_name asc"
+    uri = URI("https://exoplanetarchive.ipac.caltech.edu/TAP/sync?#{URI.encode_www_form(query: adql, format: 'json')}")
+    response = request(uri, 'Accept' => 'application/json')
+    return [] unless response && response.code.to_i == 200
+
+    payload = JSON.parse(response.body)
+    rows = payload.is_a?(Array) ? payload : (payload['data'] || [])
+    rows.filter_map do |row|
+      next unless row.is_a?(Hash)
+      name = (row['pl_name'] || row['pl_name'.to_sym]).to_s
+      next if name.empty?
+      host = row['hostname'].to_s
+      ra = numeric(row['ra'])
+      dec = numeric(row['dec'])
+      distance_pc = numeric(row['sy_dist'])
+      distance_ly = distance_pc ? distance_pc * 3.26156 : nil
+      position = radec_position(ra, dec, distance_ly)
+      id = "nasa-exoplanet-#{name.downcase.gsub(/[^a-z0-9]+/, '-')}"
+      facts = {
+        'Host star' => host.empty? ? 'Not listed' : host,
+        'Discovery method' => row['discoverymethod'],
+        'Discovery year' => row['disc_year'],
+        'Distance from Earth' => distance_ly ? "#{distance_ly.round(2)} light-years" : nil,
+        'Orbital period' => with_unit(row['pl_orbper'], 'days'),
+        'Radius' => with_unit(row['pl_rade'], 'Earth radii'),
+        'Mass' => with_unit(row['pl_bmasse'], 'Earth masses')
+      }.compact
+      sources = [
+        source('NASA Exoplanet Archive record', 'NASA Exoplanet Science Institute',
+               "https://exoplanetarchive.ipac.caltech.edu/"),
+        source('NASA Exoplanet Archive TAP data', 'NASA / Caltech',
+               "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?#{URI.encode_www_form(query: "select * from pscomppars where pl_name='#{escaped}'", format: 'csv')}")
+      ]
+      item = {
+        id: id, name: name, type: 'Exoplanet', category: 'exoplanet', color: '#6bdce1',
+        size: 0.22, position: position, ra_deg: ra, dec_deg: dec, distance_ly: distance_ly,
+        map_frame: 'universe', map_status: position ? 'plotted' : 'unplotted',
+        position_accuracy: position ? 'Host-star coordinates and distance from NASA Exoplanet Archive' : 'Archive record does not provide a complete coordinate + distance pair',
+        position_source: 'NASA Exoplanet Archive · Planetary Systems Composite Parameters',
+        subtitle: host.empty? ? 'Confirmed planet · NASA Exoplanet Archive' : "Orbits #{host}",
+        system: host, host: host, description: "#{name} is listed in NASA’s Planetary Systems Composite Parameters catalog. Its discovery metadata and published physical parameters are shown below; unknown quantities are omitted.",
+        facts: facts, sources: sources, related: []
+      }
+      item[:orbital_period_days] = numeric(row['pl_orbper'])
+      item[:radius_earth] = numeric(row['pl_rade'])
+      item[:mass_earth] = numeric(row['pl_bmasse'])
+      item
+    end
+  rescue StandardError => e
+    warn "NASA Exoplanet Archive search failed: #{e.class}: #{e.message}"
+    []
+  end
+
+  def numeric(value)
+    number = Float(value)
+    number.finite? ? number : nil
+  rescue ArgumentError, TypeError
+    nil
+  end
+
+  def with_unit(value, unit)
+    number = numeric(value)
+    number ? "#{number.round(4)} #{unit}" : nil
+  end
+
+  def jpl_small_body_search(query)
+    safe = safe_catalog_query(query)
+    return [] if safe.length < 2
+    uri = URI("https://ssd-api.jpl.nasa.gov/sbdb.api?#{URI.encode_www_form(sstr: safe, 'phys-par' => '1', 'alt-des' => '1')}")
+    response = request(uri, 'Accept' => 'application/json')
+    return [] unless response && response.code.to_i == 200
+
+    payload = JSON.parse(response.body)
+    record = payload['object']
+    return [] unless record.is_a?(Hash)
+    name = (record['name'] || record['fullname'] || record['des']).to_s.strip
+    return [] if name.empty? || payload['error']
+
+    orbit = payload['orbit'].is_a?(Hash) ? payload['orbit'] : {}
+    elements = Array(orbit['elements'])
+    facts = {}
+    facts['Designation'] = record['des'] if record['des']
+    facts['SPK ID'] = record['spkid'] if record['spkid']
+    facts['Orbit epoch'] = orbit['epoch'] if orbit['epoch']
+    { 'e' => 'Orbital eccentricity', 'a' => 'Semi-major axis', 'q' => 'Perihelion distance',
+      'i' => 'Inclination', 'diameter' => 'Diameter', 'H' => 'Absolute magnitude' }.each do |key, label|
+      entry = elements.find { |field| field['name'].to_s.casecmp(key).zero? }
+      facts[label] = [entry['value'], entry['units']].compact.join(' ') if entry && entry['value']
+    end
+    Array(payload['phys_par']).each do |field|
+      next unless field.is_a?(Hash)
+      key = field['name'].to_s
+      next unless %w[diameter H albedo rotation_period].include?(key)
+      facts[key.tr('_', ' ').capitalize] = [field['value'], field['units']].compact.join(' ') if field['value']
+    end
+    category = 'asteroid'
+    position = nil
+    command = record['spkid'] || (record['des'] && "DES=#{record['des']};")
+    if command
+      vector = horizons_position(command)
+      if vector
+        position = vector.map { |component| component / AU_PER_LIGHT_YEAR }
+      end
+    end
+    encoded_name = URI.encode_www_form_component(record['des'] || name)
+    {
+      id: "jpl-sbdb-#{(record['spkid'] || record['des'] || name).to_s.gsub(/[^A-Za-z0-9]+/, '-')}",
+      name: name, type: 'Small Solar System body', category: category, color: '#9ed7da',
+      size: 0.19, position: position, local_position_au: position && position.map { |component| component * AU_PER_LIGHT_YEAR },
+      map_frame: 'solar-system', map_status: position ? 'plotted' : 'unplotted',
+      position_accuracy: position ? 'JPL Horizons ICRF vector at current UTC date' : 'Current heliocentric vector not available; object is searchable but not plotted',
+      position_source: 'JPL Small-Body Database / Horizons',
+      subtitle: "JPL Small-Body Database · #{record['spkid'] || record['des']}",
+      description: "#{name} is indexed by NASA/JPL’s Small-Body Database. Orbital and physical values are included only when returned by the service.",
+      facts: facts,
+      sources: [
+        source('JPL Small-Body Database record', 'NASA / JPL', "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=#{encoded_name}"),
+        source('JPL Horizons', 'NASA / JPL', 'https://ssd.jpl.nasa.gov/horizons/')
+      ], related: []
+    }
+  rescue StandardError => e
+    warn "JPL small-body search failed: #{e.class}: #{e.message}"
+    []
+  end
+
+  def horizons_position(command)
+    start_date = Date.today.utc rescue Date.today
+    parameters = {
+      format: 'json', COMMAND: "'#{command}'", OBJ_DATA: 'NO', MAKE_EPHEM: 'YES',
+      EPHEM_TYPE: 'VECTORS', CENTER: "'500@10'", REF_PLANE: 'FRAME',
+      REF_SYSTEM: 'ICRF', VEC_TABLE: '1', VEC_LABELS: 'NO', CSV_FORMAT: 'YES',
+      OUT_UNITS: 'AU-D', START_TIME: "'#{start_date.iso8601}'",
+      STOP_TIME: "'#{(start_date + 1).iso8601}'", STEP_SIZE: "'1 d'"
+    }
+    uri = URI("https://ssd.jpl.nasa.gov/api/horizons.api?#{URI.encode_www_form(parameters)}")
+    response = request(uri, 'Accept' => 'application/json')
+    return nil unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    return nil if payload['error']
+    text = payload['result'].to_s
+    section = text.split('$SOE', 2)[1]
+    section = section.split('$EOE', 2)[0] if section
+    line = section.to_s.lines.find { |candidate| candidate.include?(',') && candidate.match?(/[+-]?\d+(?:\.\d+)?[Ee][+-]?\d+/) }
+    return nil unless line
+    columns = line.split(',').map(&:strip)
+    vector = columns[2, 3]&.map { |value| Float(value) }
+    vector if vector && vector.length == 3 && vector.all?(&:finite?)
+  rescue StandardError => e
+    warn "JPL Horizons vector lookup failed: #{e.class}: #{e.message}"
+    nil
+  end
+
+  def external_name_search(query)
+    safe = safe_catalog_query(query)
+    return [] if safe.length < 2
+    uri = URI("https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?#{URI.encode_www_form_component(safe)}")
+    response = request(uri, 'Accept' => 'application/xml,text/xml;q=0.9,*/*;q=0.1')
+    return [] unless response && response.code.to_i == 200
+    document = REXML::Document.new(response.body)
+    target = REXML::XPath.first(document, '//Target')
+    resolver = REXML::XPath.first(target, './Resolver') if target
+    return [] unless resolver
+    name = REXML::XPath.first(resolver, './name')&.text.to_s.strip
+    return [] if name.empty?
+    ra = numeric(REXML::XPath.first(resolver, './jradeg')&.text)
+    dec = numeric(REXML::XPath.first(resolver, './jdedeg')&.text)
+    object_type = REXML::XPath.first(resolver, './otype')&.text.to_s
+    category = sesame_category(object_type, name)
+    id = "sesame-#{name.downcase.gsub(/[^a-z0-9]+/, '-')}"
+    {
+      id: id, name: name, type: category_title(category), category: category,
+      color: category_color(category), size: 0.23, ra_deg: ra, dec_deg: dec,
+      position: nil, map_frame: 'universe', map_status: 'unplotted',
+      position_accuracy: 'Name resolver found direction but no reliable distance for 3D placement',
+      position_source: 'CDS Sesame name resolver (SIMBAD / NED / VizieR)',
+      external: true, subtitle: 'SIMBAD / NED / VizieR name resolver',
+      description: 'The CDS Sesame resolver matched this name and returned celestial coordinates. A reliable distance was not available from this response, so Astra does not invent a 3D position.',
+      facts: { 'Resolver type' => object_type.empty? ? 'Not supplied' : object_type, 'Right ascension (J2000)' => ra ? "#{ra.round(6)}°" : nil, 'Declination (J2000)' => dec ? "#{dec.round(6)}°" : nil, 'Distance' => 'Not supplied by resolver response' }.compact,
+      sources: [
+        source('CDS Sesame name resolver', 'Centre de Données astronomiques de Strasbourg', "https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?#{URI.encode_www_form_component(name)}"),
+        source('SIMBAD astronomical database', 'CDS Strasbourg', "https://simbad.cds.unistra.fr/simbad/sim-basic?Ident=#{URI.encode_www_form_component(name)}"),
+        source('NASA/IPAC Extragalactic Database', 'NASA / Caltech', "https://ned.ipac.caltech.edu/search?search_type=Near+Position+Search&objname=#{URI.encode_www_form_component(name)}")
+      ], related: []
+    }
+  rescue StandardError => e
+    warn "CDS Sesame search failed: #{e.class}: #{e.message}"
+    []
+  end
+
+  def sesame_category(object_type, name)
+    type = object_type.to_s.upcase
+    return 'galaxy' if type.match?(/[GQ]/) || name.match?(/galaxy|milky way|andromeda/i)
+    return 'black-hole' if type.match?(/BH/) || name.match?(/black hole|sagittarius a\*/i)
+    return 'nebula' if type.match?(/HII|PN|SNR|ISM|NEB/)
+    return 'exoplanet' if name.match?(/(?:Kepler|TRAPPIST|Proxima Centauri) [a-z0-9-]+/i)
+    return 'planet' if type.match?(/PLANET/)
+    return 'star' if type.match?(/STAR|V\*/)
+    'deep'
+  end
+
+  def gaia_bright_stars(limit = 450)
+    count = [[numeric(limit)&.to_i || 450, 40].max, 700].min
+    cache = defined?(@gaia_star_cache) ? @gaia_star_cache : nil
+    cached_at = defined?(@gaia_star_cache_at) ? @gaia_star_cache_at : Time.at(0)
+    return cache if cache && Time.now - cached_at < 3600
+
+    adql = "SELECT TOP #{count} source_id,ra,dec,parallax,phot_g_mean_mag,bp_rp FROM gaiadr3.gaia_source WHERE parallax > 0.2 AND parallax_over_error > 5 AND phot_g_mean_mag < 9.0 ORDER BY phot_g_mean_mag ASC"
+    uri = URI("https://gea.esac.esa.int/tap-server/tap/sync?#{URI.encode_www_form(REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'json', QUERY: adql)}")
+    response = request(uri, 'Accept' => 'application/json')
+    return cache || [] unless response && response.code.to_i == 200
+    payload = JSON.parse(response.body)
+    fields = Array(payload['metadata']).map { |field| field['name'].to_s }
+    rows = Array(payload['data'])
+    stars = rows.filter_map do |row|
+      next unless row.is_a?(Array)
+      get = lambda do |key|
+        index = fields.index(key)
+        index ? row[index] : nil
+      end
+      parallax = numeric.call(get.call('parallax')) rescue numeric(get.call('parallax'))
+      ra = numeric(get.call('ra'))
+      dec = numeric(get.call('dec'))
+      source_id = get.call('source_id')
+      next unless parallax && parallax.positive? && ra && dec && source_id
+      distance_ly = (1000.0 / parallax) * 3.26156
+      position = radec_position(ra, dec, distance_ly)
+      color_index = numeric(get.call('bp_rp'))
+      tint = if color_index && color_index < 0.4
+               '#9fbaff'
+             elsif color_index && color_index > 1.6
+               '#ffb18a'
+             else
+               '#e8dfcb'
+             end
+      {
+        id: "gaia-dr3-#{source_id}", name: "Gaia DR3 #{source_id}", type: 'Gaia DR3 star',
+        category: 'star', color: tint, size: 0.08, position: position,
+        map_frame: 'universe', map_status: 'plotted', ra_deg: ra, dec_deg: dec,
+        distance_ly: distance_ly, parallax_mas: parallax,
+        apparent_magnitude: numeric(get.call('phot_g_mean_mag')), bp_rp: color_index,
+        position_accuracy: 'Gaia DR3 ICRS coordinates with distance estimated from parallax',
+        position_source: 'ESA Gaia Data Release 3', catalog_source: 'Gaia DR3',
+        subtitle: "Gaia DR3 · #{distance_ly.round(1)} light-years",
+        system: 'Milky Way', external: true,
+        description: 'This stellar source comes from Gaia Data Release 3. The 3D position uses its published right ascension, declination and parallax; distance is estimated as 1/parallax and does not account for all systematic uncertainties.',
+        facts: { 'Gaia source ID' => source_id.to_s, 'Right ascension (ICRS)' => "#{ra.round(6)}°",
+          'Declination (ICRS)' => "#{dec.round(6)}°", 'Parallax' => "#{parallax.round(4)} mas",
+          'Estimated distance' => "#{distance_ly.round(2)} light-years",
+          'G-band magnitude' => numeric(get.call('phot_g_mean_mag'))&.round(3),
+          'BP − RP colour' => color_index&.round(3) }.compact,
+        sources: [
+          source('Gaia DR3 source archive', 'European Space Agency', "https://gea.esac.esa.int/archive/?source=#{source_id}"),
+          source('Gaia mission', 'ESA', 'https://www.esa.int/Science_Exploration/Space_Science/Gaia')
+        ], related: []
+      }
+    end
+    @gaia_star_cache = stars
+    @gaia_star_cache_at = Time.now
+    stars
+  rescue StandardError => e
+    warn "Gaia DR3 query failed: #{e.class}: #{e.message}"
+    []
+  end
+
+  def federated_search(query)
+    safe = safe_catalog_query(query)
+    return [] if safe.length < 2
+    tasks = [
+      Thread.new { exoplanet_search(safe, 8) },
+      Thread.new { jpl_small_body_search(safe) },
+      Thread.new { external_name_search(safe) },
+      Thread.new { wiki_search(safe, 5) }
+    ]
+    results = tasks.flat_map do |thread|
+      begin
+        value = thread.value
+        value.is_a?(Array) ? value : []
+      rescue StandardError => e
+        warn "Astra federated source failed: #{e.class}: #{e.message}"
+        []
+      end
+    end
+    results.uniq { |item| item[:name].to_s.downcase }.first(24)
+  end
+
+  def ephemeris_snapshot
+    EPHEMERIS_MUTEX.synchronize do
+      return EPHEMERIS_CACHE[:positions] if Time.now - EPHEMERIS_CACHE[:fetched_at] < 900 && !EPHEMERIS_CACHE[:positions].empty?
+    end
+
+    ids = EPHEMERIS_BODY_IDS.to_a
+    positions = {}
+    ids.each_slice(5) do |batch|
+      threads = batch.map do |id, command|
+        Thread.new do
+          vector = horizons_position(command)
+          [id, vector]
+        end
+      end
+      threads.each do |thread|
+        begin
+          id, vector = thread.value
+          positions[id] = { au: vector, ly: vector.map { |component| component / AU_PER_LIGHT_YEAR },
+                            source: 'NASA/JPL Horizons ICRF heliocentric vector', epoch_utc: Time.now.utc.iso8601 } if vector
+        rescue StandardError => e
+          warn "Astra ephemeris worker failed: #{e.class}: #{e.message}"
+        end
+      end
+    end
+    EPHEMERIS_MUTEX.synchronize do
+      EPHEMERIS_CACHE[:positions] = positions unless positions.empty?
+      EPHEMERIS_CACHE[:fetched_at] = Time.now unless positions.empty?
+      EPHEMERIS_CACHE[:positions]
+    end
+  end
+
 end
 
 class AstraServer < Sinatra::Base
