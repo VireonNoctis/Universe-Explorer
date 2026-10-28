@@ -611,8 +611,8 @@ module Astra
     payload = JSON.parse(response.body)
     return nil if payload['error']
     text = payload['result'].to_s
-    section = text.split('$SOE', 2)[1]
-    section = section.split('$EOE', 2)[0] if section
+    section = text.split('$$SOE', 2)[1]
+    section = section.split('$$EOE', 2)[0] if section
     line = section.to_s.lines.find { |candidate| candidate.include?(',') && candidate.match?(/[+-]?\d+(?:\.\d+)?[Ee][+-]?\d+/) }
     return nil unless line
     columns = line.split(',').map(&:strip)
@@ -686,7 +686,7 @@ module Astra
     return 'nebula' if type.match?(/HII|PN|SNR|ISM|NEB/)
     return 'exoplanet' if name.match?(/(?:Kepler|TRAPPIST|Proxima Centauri) [a-z0-9-]+/i)
     return 'planet' if type.match?(/PLANET/)
-    return 'star' if type.match?(/STAR|V\*/)
+    return 'star' if type.match?(/STAR|V\*/) || type == '*'
     'deep'
   end
 
