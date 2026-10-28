@@ -6,7 +6,7 @@ Astra is an interactive astronomy browser built around three application files: 
 
 ## Features
 
-- **Interactive 3D scene:** drag to orbit, scroll to zoom, click markers, focus an object, toggle labels and orbit paths.
+- **Interactive 3D scene:** drag to orbit, scroll to zoom, click markers, focus an object, toggle labels and orbit paths, and fit the current category to its spatial extent.
 - **Two spatial frames:** the universe map uses Cartesian coordinates in light-years where a reliable distance and sky position exist. The Solar System view uses astronomical units (AU), with current vectors requested from JPL Horizons when available.
 - **Solar System ephemerides:** fetches Horizons vectors for supported planets, moons, dwarf planets and small bodies. An approximate mean-orbit layout is available if live ephemerides cannot be retrieved.
 - **Exoplanet discovery:** searches NASA Exoplanet Archive's `pscomppars` table for planet/host matches and published parameters; the Exoplanet category can also page through archive records.
@@ -15,7 +15,7 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Astronomical name resolution:** queries CDS Sesame (SIMBAD/NED/VizieR resolver) and plots results only when a usable distance is available. Coordinates without a reliable distance remain searchable but unplotted.
 - **Supplementary discovery:** Wikipedia search/summary provides broader context rather than serving as the scientific measurement authority.
 - **Object profiles:** summaries, measurements, coordinate provenance, related objects, and direct source links.
-- **Catalog Navigator:** an in-app research drawer with provider counts where available, paginated exoplanets, paginated asteroid/comet records, Earth close-approach forecasts, and a bounded Gaia DR3 star sample.
+- **Catalog Navigator:** an in-app research drawer with source coverage, paginated exoplanets, paginated asteroid/comet records, Earth close-approach forecasts, fireball observations, Sentry monitoring records, a bounded Gaia DR3 star sample, NASA image search and NASA technical literature.
 - **On-demand small-body vectors:** bulk small-body rows provide orbital parameters; selecting one requests a JPL Horizons vector instead of treating a catalog row as a current position.
 - **NASA visual archive:** search the NASA Image and Video Library for images, videos, and audio associated with planets, missions, observatories, and deep-sky targets. Previews link back to the original NASA media record.
 - **NASA research literature:** search NASA’s Technical Reports Server for public reports, mission papers, research citations and abstracts, with paginated results linked to the original citation.
@@ -83,7 +83,7 @@ No HTML app file or JavaScript package manifest is required. Sinatra generates t
 | `GET /api/sky?limit=450` | Returns a bounded bright-star sample from Gaia DR3 (not the entire archive) |
 | `GET /api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150` | Returns a bounded Gaia DR3 sky-cone query in ICRS coordinates |
 | `GET /api/ephemeris` | Returns cached/current JPL Horizons vectors for supported Solar System bodies |
-| `GET /api/source-search?q=supernova` | Returns source links for NASA, ESA, Exoplanet Archive, SIMBAD and Wikipedia |
+| `GET /api/source-search?q=supernova` | Returns direct source links for NASA, ESA, JPL, Gaia, NASA media, NTRS, SIMBAD and Wikipedia |
 
 Quick checks:
 
