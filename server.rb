@@ -477,10 +477,20 @@ module Astra
     return [] unless response && response.code.to_i == 200
 
     payload = JSON.parse(response.body)
-    rows = payload.is_a?(Array) ? payload : (payload['data'] || [])
+    if payload.is_a?(Hash) && payload['data'].is_a?(Array)
+      fields = Array(payload['metadata']).map { |field| field.is_a?(Hash) ? field['name'].to_s : '' }
+      rows = payload['data'].map do |row|
+        row.is_a?(Hash) ? row.transform_keys(&:to_s) : (row.is_a?(Array) ? fields.zip(row).to_h : nil)
+      end.compact
+    elsif payload.is_a?(Array)
+      rows = payload
+    else
+      rows = []
+    end
     rows.filter_map do |row|
       next unless row.is_a?(Hash)
-      name = (row['pl_name'] || row['pl_name'.to_sym]).to_s
+      row = row.transform_keys(&:to_s)
+      name = row['pl_name'].to_s
       next if name.empty?
       host = row['hostname'].to_s
       ra = numeric(row['ra'])
