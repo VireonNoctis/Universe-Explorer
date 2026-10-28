@@ -54,7 +54,7 @@ a { color: inherit; text-decoration: none; }
 .result-icon { display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid rgba(176, 184, 235, .2); border-radius: 9px; color: #c4bdff; background: rgba(128, 132, 206, .09); font-size: 17px; }
 .result-icon.star { color: #ffd3a2; }
 .result-icon.exoplanet, .result-icon.moon { color: #91e8ee; }
-.result-icon.galaxy, .result-icon.nebula, .result-icon.black-hole { color: #c0a5ff; }
+.result-icon.galaxy, .result-icon.nebula, .result-icon.black-hole, .result-icon.deep { color: #c0a5ff; }
 .result-text { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .result-text strong { overflow: hidden; color: #edf0ff; font-size: 12px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
 .result-text small { overflow: hidden; color: #8994b5; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
@@ -176,7 +176,7 @@ a { color: inherit; text-decoration: none; }
 .destination-icon { --orb: #9e9eff; position: relative; display: grid; place-items: center; width: 27px; height: 27px; flex: 0 0 auto; border: 1px solid rgba(173, 184, 234, .15); border-radius: 50%; background: radial-gradient(circle at 30% 27%, #e5efff, var(--orb) 32%, #10162d 79%); box-shadow: 0 0 13px color-mix(in srgb, var(--orb), transparent 80%); }
 .destination-icon.star { border: 0; background: radial-gradient(circle, #fff3d7 0, var(--orb) 23%, transparent 72%); }
 .destination-icon.galaxy { border: 0; background: radial-gradient(ellipse at center, #fff0cc 0 5%, var(--orb) 20%, #5269aa 40%, transparent 72%); transform: rotate(-28deg) scaleX(1.2); }
-.destination-icon.nebula { border: 0; background: radial-gradient(ellipse, var(--orb), transparent 68%); }
+.destination-icon.nebula, .destination-icon.deep { border: 0; background: radial-gradient(ellipse, var(--orb), transparent 68%); }
 .destination-icon.black-hole { border: 1px solid #b28cbd; background: radial-gradient(circle, #03040c 0 28%, #e2a76e 32%, #7264b1 52%, #11152a 73%); }
 .destination-icon.exoplanet { background: radial-gradient(circle at 30% 25%, #e8ffff, var(--orb) 25%, #2a6482 58%, #10192b 81%); }
 .destination-icon > i { width: 5px; height: 5px; border-radius: 50%; background: #a7f0e3; }
