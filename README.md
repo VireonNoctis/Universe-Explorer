@@ -15,6 +15,8 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Astronomical name resolution:** queries CDS Sesame (SIMBAD/NED/VizieR resolver) and plots results only when a usable distance is available. Coordinates without a reliable distance remain searchable but unplotted.
 - **Supplementary discovery:** Wikipedia search/summary provides broader context rather than serving as the scientific measurement authority.
 - **Object profiles:** summaries, measurements, coordinate provenance, related objects, and direct source links.
+- **Catalog Navigator:** an in-app research drawer with provider counts where available, paginated exoplanets, paginated asteroid/comet records, Earth close-approach forecasts, and a bounded Gaia DR3 star sample.
+- **On-demand small-body vectors:** bulk small-body rows provide orbital parameters; selecting one requests a JPL Horizons vector instead of treating a catalog row as a current position.
 - **Responsive space UI:** deep-navy observatory design, procedural planet art, cosmic highlights, Orbitron/Space Grotesk typography, mobile layouts, reduced-motion support.
 
 ## Requirements
@@ -67,7 +69,12 @@ No HTML app file or JavaScript package manifest is required. Sinatra generates t
 | `GET /api/search?q=TRAPPIST-1` | Searches local entries and live NASA Exoplanet Archive, JPL SBDB, CDS Sesame and Wikipedia results |
 | `GET /api/object/:id` | Retrieves a curated record by ID |
 | `GET /api/lookup?title=Andromeda%20Galaxy` | Returns a curated record or a supplementary Wikipedia summary |
-| `GET /api/archive/exoplanets?limit=40&after=...&q=...` | Cursor-paginates records from NASA Exoplanet Archive `pscomppars` (confirmed planets; not every object type) |\n| `GET /api/sky?limit=450` | Returns a bounded bright-star sample from Gaia DR3 (not the entire archive) |
+| `GET /api/archive/exoplanets?limit=40&after=...&q=...` | Cursor-paginates records from NASA Exoplanet Archive `pscomppars` (confirmed planets; not every object type) |
+| `GET /api/archive/small-bodies?limit=40&offset=0&kind=all&neo=1` | Offset-paginates JPL asteroid/comet records, optionally restricted to near-Earth objects |
+| `GET /api/small-body?query=433%20Eros` | Resolves a JPL small body and requests a current Horizons vector where possible |
+| `GET /api/close-approaches?days=90&distance=0.05&limit=30` | Returns bounded Earth close-approach forecasts from JPL/CNEOS |
+| `GET /api/coverage` | Source registry and provider-side counts where an archive supplies them; results are cached briefly |
+| `GET /api/sky?limit=450` | Returns a bounded bright-star sample from Gaia DR3 (not the entire archive) |
 | `GET /api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150` | Returns a bounded Gaia DR3 sky-cone query in ICRS coordinates |
 | `GET /api/ephemeris` | Returns cached/current JPL Horizons vectors for supported Solar System bodies |
 | `GET /api/source-search?q=supernova` | Returns source links for NASA, ESA, Exoplanet Archive, SIMBAD and Wikipedia |
@@ -79,6 +86,9 @@ curl http://localhost:4567/api/health
 curl http://localhost:4567/api/catalog
 curl 'http://localhost:4567/api/search?q=TRAPPIST-1'
 curl 'http://localhost:4567/api/archive/exoplanets?limit=40'
+curl 'http://localhost:4567/api/archive/small-bodies?limit=40&kind=asteroid'
+curl 'http://localhost:4567/api/close-approaches?days=90&distance=0.05&limit=30'
+curl http://localhost:4567/api/coverage
 curl 'http://localhost:4567/api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150'
 curl http://localhost:4567/api/ephemeris
 ```
@@ -111,6 +121,8 @@ A genuinely exhaustive universe catalogue is not currently achievable as a singl
 
 - [NASA Exoplanet Archive TAP](https://exoplanetarchive.ipac.caltech.edu/docs/TAP/usingTAP.html) — exoplanet/host discovery data.
 - [NASA/JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) — asteroid/comet records.
+- [NASA/JPL SBDB Query API](https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html) — paginated asteroid/comet queries and source counts.
+- [NASA/JPL Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) — modelled approach time, distance and velocity records.
 - [NASA/JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) — date-dependent Solar System ephemerides and vectors.
 - [ESA Gaia Archive](https://gea.esac.esa.int/archive/) — stellar astrometry, parallax, photometry and associated records.
 - [CDS Sesame](https://cds.unistra.fr/cgi-bin/nph-sesame/) and [SIMBAD](https://simbad.cds.unistra.fr/) — astronomical name resolution and cross-identifications.
