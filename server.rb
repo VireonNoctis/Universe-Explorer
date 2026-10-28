@@ -411,7 +411,7 @@ module Astra
     slug = page_title.downcase.gsub(/[^a-z0-9]+/, '-').gsub(/^-|-$/, '')
     {
       id: "wiki-#{slug}", name: page_title, type: category_title(category), category: category,
-      color: category_color(category), size: 0.3, position: [0, 0, 0],
+      color: category_color(category), size: 0.3, position: nil, map_frame: 'universe', map_status: 'unplotted',
       subtitle: record['description'] || 'External knowledge reference',
       description: summary, descriptionLong: summary, external: true,
       facts: { 'Reference type' => category_title(category), 'Index' => 'Wikipedia / Wikimedia', 'Scientific context' => 'See linked source pages' },
@@ -595,7 +595,7 @@ module Astra
   end
 
   def horizons_position(command)
-    start_date = Date.today.utc rescue Date.today
+    start_date = Date.today
     parameters = {
       format: 'json', COMMAND: "'#{command}'", OBJ_DATA: 'NO', MAKE_EPHEM: 'YES',
       EPHEM_TYPE: 'VECTORS', CENTER: "'500@10'", REF_PLANE: 'FRAME',
@@ -688,7 +688,7 @@ module Astra
         index = fields.index(key)
         index ? row[index] : nil
       end
-      parallax = numeric.call(get.call('parallax')) rescue numeric(get.call('parallax'))
+      parallax = numeric(get.call('parallax'))
       ra = numeric(get.call('ra'))
       dec = numeric(get.call('dec'))
       source_id = get.call('source_id')
@@ -847,7 +847,38 @@ class AstraServer < Sinatra::Base
     content_type :json
     cache_control :no_store
     { objects: Astra::CATALOG, count: Astra::CATALOG.length,
-      categories: Astra::CATALOG.map { |item| item[:category] }.uniq }.to_json
+      categories: Astra::CATALOG.map { |item| item[:category] }.uniq,
+      coordinate_system: { universe: 'Linear 3D Cartesian coordinates; one scene unit equals one light-year',
+        solar_system: 'JPL Horizons heliocentric ICRF vectors when available; one scene unit equals one AU',
+        body_sizes: 'Celestial bodies are rendered as enlarged interactive markers and are not to physical size' },
+      catalogs: [
+        { id: 'nasa-exoplanet-archive', name: 'NASA Exoplanet Archive', scope: 'Confirmed exoplanets and host-system parameters', url: 'https://exoplanetarchive.ipac.caltech.edu/' },
+        { id: 'jpl-sbdb', name: 'JPL Small-Body Database / Horizons', scope: 'Asteroids, comets, orbital data and current vectors', url: 'https://ssd.jpl.nasa.gov/' },
+        { id: 'gaia-dr3', name: 'ESA Gaia DR3', scope: 'Astrometry and parallax distances for sampled stars', url: 'https://gea.esac.esa.int/archive/' },
+        { id: 'cds-sesame', name: 'CDS Sesame / SIMBAD / NED / VizieR', scope: 'Astronomical name resolution and coordinates', url: 'https://cds.unistra.fr/cgi-bin/nph-sesame/' },
+        { id: 'wikipedia', name: 'Wikipedia / Wikimedia', scope: 'Supplementary discoverability and contextual summaries', url: 'https://www.wikipedia.org/' }
+      ] }.to_json
+  end
+
+  get '/api/sky' do
+    content_type :json
+    cache_control :no_store
+    limit = params['limit'].to_s.empty? ? 450 : params['limit'].to_i
+    halt 400, { error: 'Limit must be between 40 and 700.' }.to_json unless limit.between?(40, 700)
+    stars = Astra.gaia_bright_stars(limit)
+    { objects: stars, count: stars.length,
+      catalog: 'Gaia DR3', complete_catalog: false,
+      note: 'A magnitude-limited, parallax-quality-filtered sample; not the full Gaia source table.',
+      source: 'https://gea.esac.esa.int/archive/' }.to_json
+  end
+
+  get '/api/ephemeris' do
+    content_type :json
+    cache_control :no_store
+    positions = Astra.ephemeris_snapshot
+    halt 503, { error: 'JPL Horizons is temporarily unavailable.', positions: {} }.to_json if positions.empty?
+    { positions: positions, source: 'NASA/JPL Horizons', frame: 'ICRF heliocentric', units: 'AU and light-years',
+      epoch_utc: positions.values.map { |value| value[:epoch_utc] }.compact.first }.to_json
   end
 
   get '/api/search' do
@@ -866,9 +897,11 @@ class AstraServer < Sinatra::Base
                     item[:subtitle], item[:description], item[:facts].values.join(' ')].compact.join(' ').downcase
       searchable.include?(needle)
     end.first(8)
-    external = Astra.wiki_search(query, 6)
-    results = (local + external).uniq { |item| item[:name].to_s.downcase }.first(10)
-    { query: query, results: results, local_count: local.length, external_count: external.length }.to_json
+    external = Astra.federated_search(query)
+    results = (local + external).uniq { |item| item[:name].to_s.downcase }.first(32)
+    { query: query, results: results, local_count: local.length, external_count: external.length,
+      sources: %w[NASA_Exoplanet_Archive JPL_SBDB CDS_Sesame Wikipedia],
+      message: 'Search results combine curated local entries with live external catalogs; not all catalogs provide full 3D coordinates.' }.to_json
   end
 
   get '/api/object/:id' do
