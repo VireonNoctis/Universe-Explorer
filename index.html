@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050711" />
+  <meta name="description" content="Explore planets, stars, galaxies and deep-sky objects in an interactive universe." />
+  <title>Astra — Universe Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"}}</script>
+</head>
+<body>
+  <main class="app-shell" id="appShell">
+    <div id="universe" class="universe" aria-label="Interactive 3D universe. Drag to orbit and scroll to zoom."></div>
+    <div class="scene-vignette"></div>
+    <div class="focus-shade"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Astra home">
+        <span class="brand-mark"><span></span><span></span><span></span></span>
+        <span class="brand-name">ASTRA<span class="brand-sub">UNIVERSE EXPLORER</span></span>
+      </a>
+      <div class="search-wrap" id="searchWrap">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+        <input id="globalSearch" type="search" autocomplete="off" placeholder="Search planets, stars, galaxies..." aria-label="Search astronomical objects" />
+        <kbd>/</kbd>
+        <div class="search-results" id="searchResults" role="listbox" aria-label="Search results"></div>
+      </div>
+      <div class="top-actions">
+        <div class="live-status"><span class="live-dot"></span><span id="connectionLabel">SKY ONLINE</span></div>
+        <button class="icon-button reset-button" id="resetView" title="Reset view" aria-label="Reset view">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 11a8.2 8.2 0 1 0 2.4-5.8L3.7 8.1"></path><path d="M3.7 3.5v4.7h4.7"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="intro-block" id="introBlock">
+      <div class="eyebrow"><span class="eyebrow-line"></span> YOUR WINDOW INTO THE COSMOS</div>
+      <h1>There's more<br />out <em>there.</em></h1>
+      <p>From familiar worlds to distant galaxies.<br />Choose a point of light and follow the story.</p>
+      <div class="intro-meta"><span><i class="meta-dot"></i> INTERACTIVE 3D MAP</span><span>·</span><span>NOT TO SCALE</span></div>
+    </section>
+
+    <div class="scene-hint" id="sceneHint">
+      <span class="hint-mouse"><span></span></span>
+      <span>DRAG TO EXPLORE <i>·</i> SCROLL TO TRAVEL</span>
+    </div>
+
+    <div class="scene-legend" id="sceneLegend">
+      <span><i class="legend-dot planet-dot"></i> PLANETS</span>
+      <span><i class="legend-dot star-dot"></i> STARS</span>
+      <span><i class="legend-dot galaxy-dot"></i> DEEP SPACE</span>
+    </div>
+
+    <aside class="detail-panel" id="detailPanel" aria-hidden="true">
+      <div class="panel-topline">
+        <span class="panel-index"><span class="panel-index-dot"></span> CELESTIAL OBJECT</span>
+        <button class="close-button" id="closeDetails" aria-label="Close object details" title="Close details">×</button>
+      </div>
+      <div class="detail-heading">
+        <div>
+          <span class="object-kind" id="detailType">PLANET</span>
+          <h2 id="detailName">Earth</h2>
+          <p class="detail-distance" id="detailSubtitle">Our home world</p>
+        </div>
+      </div>
+      <div class="detail-visual" id="detailVisual">
+        <div class="visual-orb" id="detailOrb"><span></span><i></i></div>
+        <div class="visual-orbit orbit-one"></div><div class="visual-orbit orbit-two"></div>
+        <div class="visual-caption" id="visualCaption">SOL SYSTEM / 03</div>
+      </div>
+      <p class="detail-summary" id="detailSummary"></p>
+      <div class="section-heading"><span>KEY DATA</span><span class="section-rule"></span><span class="section-note">OBSERVATIONS</span></div>
+      <div class="fact-grid" id="detailFacts"></div>
+      <div class="source-section">
+        <div class="section-heading"><span>FOLLOW THE EVIDENCE</span><span class="section-rule"></span></div>
+        <p class="source-intro">Explore reliable references and the observations behind this profile.</p>
+        <div id="detailSources" class="source-list"></div>
+      </div>
+      <div class="related-section">
+        <div class="section-heading"><span>NEARBY IN KNOWLEDGE</span><span class="section-rule"></span></div>
+        <div id="detailRelated" class="related-list"></div>
+      </div>
+      <p class="panel-footnote"><span class="footnote-star">✳</span> Scale and positions in this visualization are illustrative, not a navigation chart.</p>
+    </aside>
+
+    <div class="scene-controls">
+      <button class="icon-button" id="zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"></path></svg></button>
+      <button class="icon-button" id="zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></button>
+      <span class="control-divider"></span>
+      <button class="icon-button control-toggle active" id="toggleLabels" title="Toggle object labels" aria-label="Toggle object labels"><svg viewBox="0 0 24 24"><path d="M3 12s3.2-6 9-6 9 6 9 6-3.2 6-9 6-9-6-9-6Z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button>
+      <button class="icon-button control-toggle active" id="toggleOrbits" title="Toggle orbit paths" aria-label="Toggle orbit paths"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="4.3" transform="rotate(-30 12 12)"></ellipse><circle cx="12" cy="12" r="1.4"></circle></svg></button>
+    </div>
+
+    <section class="discovery-dock" aria-label="Explore by category">
+      <div class="dock-top">
+        <div><span class="dock-eyebrow">PICK YOUR DESTINATION</span><h3>Explore the cosmos <span>↘</span></h3></div>
+        <span class="catalog-count" id="catalogCount">LOADING CATALOG</span>
+      </div>
+      <div class="category-list" id="categoryList">
+        <button class="category-chip active" data-filter="all"><span class="chip-symbol">✧</span> All objects</button>
+        <button class="category-chip" data-filter="planet"><span class="chip-symbol">◉</span> Planets</button>
+        <button class="category-chip" data-filter="exoplanet"><span class="chip-symbol">⊙</span> Exoplanets</button>
+        <button class="category-chip" data-filter="star"><span class="chip-symbol">✦</span> Stars</button>
+        <button class="category-chip" data-filter="galaxy"><span class="chip-symbol">◎</span> Galaxies</button>
+        <button class="category-chip" data-filter="deep"><span class="chip-symbol">✳</span> Deep space</button>
+      </div>
+      <div class="quick-destinations" id="quickDestinations">
+        <button class="destination-card" data-object="earth"><span class="destination-glyph earth-glyph"></span><span><small>OUR HOME</small><strong>Earth</strong></span><span class="destination-arrow">↗</span></button>
+        <button class="destination-card" data-object="sagittarius-a-star"><span class="destination-glyph blackhole-glyph"></span><span><small>MILKY WAY CORE</small><strong>Sagittarius A*</strong></span><span class="destination-arrow">↗</span></button>
+        <button class="destination-card" data-object="andromeda"><span class="destination-glyph galaxy-glyph"></span><span><small>NEAREST MAJOR GALAXY</small><strong>Andromeda</strong></span><span class="destination-arrow">↗</span></button>
+        <button class="destination-card" data-object="trappist-1e"><span class="destination-glyph exo-glyph"></span><span><small>EXOPLANET</small><strong>TRAPPIST-1 e</strong></span><span class="destination-arrow">↗</span></button>
+      </div>
+    </section>
+
+    <div class="bottom-credit"><span class="credit-pulse"></span> DATA-LED EXPLORATION <span class="credit-separator">/</span> SOURCES INCLUDED</div>
+    <div class="toast" id="toast" role="status"></div>
+    <div class="hover-label" id="hoverLabel"></div>
+  </main>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js";
+    import { CSS2DRenderer, CSS2DObject } from "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/renderers/CSS2DRenderer.js";
+
+    const $ = (id) => document.getElementById(id);
+    const shell = $("appShell");
+    const universeEl = $("universe");
+    const searchInput = $("globalSearch");
+    const searchResults = $("searchResults");
+    const detailPanel = $("detailPanel");
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#050711");
+    scene.fog = new THREE.FogExp2("#050711", 0.0014);
+    const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 1500);
+    camera.position.set(0, 10, 31);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    universeEl.appendChild(renderer.domElement);
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.domElement.className = "label-layer";
+    universeEl.appendChild(labelRenderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.065;
+    controls.minDistance = 3.5;
+    controls.maxDistance = 150;
+    controls.rotateSpeed = 0.48;
+    controls.zoomSpeed = 0.85;
+    controls.target.set(3.2, 0, 0);
+    scene.add(new THREE.AmbientLight("#a9b8e7", 1.25));
+    const keyLight = new THREE.PointLight("#eff5ff", 1050, 150, 1.7);
+    keyLight.position.set(-3, 10, 15);
+    scene.add(keyLight);
+
+    const objectNodes = new Map();
+    const clickableMeshes = [];
+    const orbitNodes = [];
+    let catalog = [];
+    let visibleFilter = "all";
+    let labelsVisible = true;
+    let orbitsVisible = true;
+    let selectedObject = null;
+    let cameraGoal = null;
+    let targetGoal = null;
+    let searchTimer = null;
+    let toastTimer = null;
+    let hovered = null;
+    const clock = new THREE.Clock();
+
+    function seededRandom(seed) {
+      let value = 0;
+      for (let i = 0; i < String(seed).length; i++) value = (value * 31 + String(seed).charCodeAt(i)) >>> 0;
+      return function () { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; };
+    }
+    function makeStarfield() {
+      const count = 7000;
+      const positions = new Float32Array(count * 3);
+      const colors = new Float32Array(count * 3);
+      const rand = seededRandom("astra-starfield");
+      const palette = [[0.68, 0.78, 1], [1, 0.83, 0.68], [0.83, 0.88, 1], [1, 1, 1]];
+      for (let i = 0; i < count; i++) {
+        const radius = 75 + rand() * 340;
+        const theta = rand() * Math.PI * 2;
+        const phi = Math.acos(2 * rand() - 1);
+        positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = radius * Math.cos(phi);
+        positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+        const color = palette[Math.floor(rand() * palette.length)];
+        const brightness = 0.52 + rand() * 0.48;
+        colors[i * 3] = color[0] * brightness;
+        colors[i * 3 + 1] = color[1] * brightness;
+        colors[i * 3 + 2] = color[2] * brightness;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      const stars = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.32, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.82, depthWrite: false }));
+      stars.name = "background-stars";
+      scene.add(stars);
+      const dustPositions = new Float32Array(1100 * 3);
+      for (let i = 0; i < 1100; i++) {
+        const x = (rand() - 0.5) * 180;
+        const z = (rand() - 0.5) * 130;
+        dustPositions[i * 3] = x;
+        dustPositions[i * 3 + 1] = (rand() - 0.5) * 10;
+        dustPositions[i * 3 + 2] = z - 36;
+      }
+      const dustGeometry = new THREE.BufferGeometry();
+      dustGeometry.setAttribute("position", new THREE.BufferAttribute(dustPositions, 3));
+      scene.add(new THREE.Points(dustGeometry, new THREE.PointsMaterial({ color: "#7a91d0", size: 0.18, transparent: true, opacity: 0.32, depthWrite: false })));
+    }
+    makeStarfield();
+
+    function makeSurfaceTexture(obj) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 512;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      const rand = seededRandom(obj.id || obj.name);
+      const base = obj.color || "#6e83bd";
+      const colors = obj.textureColors || [base, "#202b49"];
+      const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+      gradient.addColorStop(0, colors[0]);
+      gradient.addColorStop(1, colors[1]);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 512, 256);
+      if (["Jupiter", "Saturn", "Uranus", "Neptune"].includes(obj.name)) {
+        const bands = obj.name === "Jupiter" ? 19 : 34;
+        for (let i = 0; i < bands; i++) {
+          const y = i * 256 / bands;
+          ctx.globalAlpha = 0.13 + rand() * 0.28;
+          ctx.fillStyle = i % 2 ? "#fff0d5" : "#1e233e";
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          for (let x = 0; x <= 512; x += 16) ctx.lineTo(x, y + Math.sin(x / 44 + i) * (2 + rand() * 5));
+          ctx.lineTo(512, y + 256 / bands);
+          ctx.lineTo(0, y + 256 / bands);
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (obj.name === "Jupiter") {
+          ctx.globalAlpha = 0.78;
+          ctx.fillStyle = "#bd7557";
+          ctx.beginPath();
+          ctx.ellipse(355, 155, 34, 15, -0.15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 0.23;
+          ctx.strokeStyle = "#fff1d4";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
+      } else {
+        for (let i = 0; i < (obj.category === "moon" || obj.category === "asteroid" ? 95 : 44); i++) {
+          const x = rand() * 512;
+          const y = rand() * 256;
+          const radius = (obj.category === "moon" ? 1.8 : 3) + rand() * 13;
+          ctx.globalAlpha = 0.06 + rand() * 0.2;
+          ctx.fillStyle = rand() > 0.5 ? "#f0e9ff" : "#101b31";
+          ctx.beginPath();
+          ctx.ellipse(x, y, radius * (0.7 + rand()), radius * (0.35 + rand() * 0.7), rand(), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    }
+    function addHalo(parent, color, size) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 128;
+      const ctx = canvas.getContext("2d");
+      const gradient = ctx.createRadialGradient(64, 64, 3, 64, 64, 64);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(0.24, color + "72");
+      gradient.addColorStop(1, color + "00");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 128, 128);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 }));
+      sprite.scale.set(size * 4.8, size * 4.8, 1);
+      parent.add(sprite);
+    }
+    function addGalaxy(parent, obj, baseSize) {
+      const rand = seededRandom(obj.id || obj.name);
+      const count = 650;
+      const positions = new Float32Array(count * 3);
+      const colors = new Float32Array(count * 3);
+      const core = new THREE.Color(obj.color || "#e2baff");
+      const outer = new THREE.Color("#6b86d9");
+      for (let i = 0; i < count; i++) {
+        const arm = i % 4;
+        const t = rand();
+        const radius = 0.12 + Math.pow(t, 0.82) * baseSize * 2.8;
+        const angle = t * Math.PI * 5 + arm * Math.PI / 2 + (rand() - 0.5) * 0.8;
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = (rand() - 0.5) * baseSize * 0.34 * (1 - t);
+        positions[i * 3 + 2] = Math.sin(angle) * radius;
+        const c = outer.clone().lerp(core, 1 - t);
+        colors[i * 3] = c.r;
+        colors[i * 3 + 1] = c.g;
+        colors[i * 3 + 2] = c.b;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.055, vertexColors: true, transparent: true, opacity: 0.92, depthWrite: false, sizeAttenuation: true }));
+      parent.add(points);
+      const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(baseSize * 0.2, 22, 22), new THREE.MeshBasicMaterial({ color: obj.color || "#f1cda0" }));
+      parent.add(coreMesh);
+      return points;
+    }
+    function addNebula(parent, obj, baseSize) {
+      const rand = seededRandom(obj.id || obj.name);
+      const count = 900;
+      const positions = new Float32Array(count * 3);
+      const c1 = new THREE.Color(obj.color || "#9b80e7");
+      const c2 = new THREE.Color("#5aafd5");
+      const colors = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const angle = rand() * Math.PI * 2;
+        const radius = Math.pow(rand(), 0.55) * baseSize * 1.7;
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = (rand() - 0.5) * baseSize * 0.9;
+        positions[i * 3 + 2] = Math.sin(angle) * radius * 0.76;
+        const c = c1.clone().lerp(c2, rand());
+        colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      parent.add(new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.1, vertexColors: true, transparent: true, opacity: 0.62, blending: THREE.AdditiveBlending, depthWrite: false })));
+    }
+    function makeOrbit(radius) {
+      const points = [];
+      for (let i = 0; i <= 160; i++) {
+        const angle = i / 160 * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
+      }
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.LineLoop(geometry, new THREE.LineBasicMaterial({ color: "#667aa8", transparent: true, opacity: 0.25, depthWrite: false }));
+      line.visible = orbitsVisible;
+      scene.add(line);
+      orbitNodes.push(line);
+    }
+    function positionFor(obj) {
+      if (Array.isArray(obj.position) && obj.position.length === 3) return obj.position;
+      let hash = 0;
+      for (let i = 0; i < String(obj.id || obj.name).length; i++) hash = (hash * 31 + String(obj.id || obj.name).charCodeAt(i)) >>> 0;
+      const angle = (hash % 628) / 100;
+      const radius = 10 + (hash % 120) / 12;
+      return [Math.cos(angle) * radius, ((hash % 70) - 35) / 7, -9 - Math.sin(angle) * radius];
+    }
+    function createObject(obj) {
+      if (!obj || !obj.id || objectNodes.has(obj.id)) return objectNodes.get(obj.id);
+      const renderObj = Object.assign({}, obj, { position: positionFor(obj) });
+      const radius = Math.max(0.12, Math.min(Number(renderObj.size) || 0.34, 1.35));
+      const group = new THREE.Group();
+      group.position.fromArray(renderObj.position);
+      group.userData.object = renderObj;
+      let hitMesh;
+      if (renderObj.category === "galaxy") {
+        addGalaxy(group, renderObj, Math.max(0.7, radius * 1.7));
+        hitMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.8, 16, 12), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+        group.add(hitMesh);
+      } else if (renderObj.category === "nebula" || renderObj.category === "deep") {
+        addNebula(group, renderObj, Math.max(0.7, radius * 2.1));
+        hitMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.2, 16, 12), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+        group.add(hitMesh);
+      } else if (renderObj.category === "black-hole") {
+        hitMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.2, 28, 20), new THREE.MeshBasicMaterial({ color: "#08050e", transparent: true, opacity: 0.97 }));
+        group.add(hitMesh);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.65, radius * 0.17, 10, 72), new THREE.MeshBasicMaterial({ color: "#e1a26d", transparent: true, opacity: 0.82, side: THREE.DoubleSide }));
+        ring.rotation.x = Math.PI / 2.5;
+        group.add(ring);
+        addHalo(group, renderObj.color || "#b68bff", radius * 1.8);
+      } else {
+        const material = new THREE.MeshStandardMaterial({
+          map: makeSurfaceTexture(renderObj),
+          roughness: renderObj.category === "star" ? 0.3 : 0.86,
+          metalness: 0.04,
+          emissive: new THREE.Color(renderObj.color || "#7088c2"),
+          emissiveIntensity: renderObj.category === "star" ? 0.8 : 0.06
+        });
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 26), material);
+        sphere.rotation.z = 0.12;
+        group.add(sphere);
+        hitMesh = sphere;
+        if (renderObj.category === "star") addHalo(group, renderObj.color || "#ffcc87", radius * 2.2);
+        if (renderObj.id === "saturn") {
+          const rings = new THREE.Mesh(new THREE.RingGeometry(radius * 1.25, radius * 2.1, 72), new THREE.MeshStandardMaterial({ color: "#d7c39c", side: THREE.DoubleSide, transparent: true, opacity: 0.74, roughness: 1 }));
+          rings.rotation.x = Math.PI / 2;
+          group.add(rings);
+        }
+      }
+      hitMesh.userData.objectId = renderObj.id;
+      hitMesh.userData.object = renderObj;
+      clickableMeshes.push(hitMesh);
+      const label = document.createElement("div");
+      label.className = "object-label";
+      label.style.setProperty("--object-color", renderObj.color || "#b3c4ff");
+      label.innerHTML = '<span class="object-label-dot"></span><span>' + escapeHtml(renderObj.name) + '</span>';
+      const labelObject = new CSS2DObject(label);
+      labelObject.position.set(0, radius * 1.55 + 0.24, 0);
+      labelObject.visible = labelsVisible;
+      group.add(labelObject);
+      group.userData.label = labelObject;
+      group.userData.hitMesh = hitMesh;
+      scene.add(group);
+      const node = { group: group, mesh: hitMesh, label: labelObject, object: renderObj, baseRadius: radius };
+      objectNodes.set(renderObj.id, node);
+      return node;
+    }
+    function escapeHtml(value) {
+      return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
+      });
+    }
+    function getCategory(obj) {
+      if (["nebula", "deep", "black-hole", "asteroid", "dwarf-planet", "moon"].includes(obj.category)) return "deep";
+      return obj.category || "deep";
+    }
+    function applyFilter(filter) {
+      visibleFilter = filter;
+      document.querySelectorAll(".category-chip").forEach(function (chip) { chip.classList.toggle("active", chip.dataset.filter === filter); });
+      objectNodes.forEach(function (node) {
+        const category = getCategory(node.object);
+        node.group.visible = filter === "all" || category === filter;
+      });
+      if (filter !== "all" && !Array.from(objectNodes.values()).some(function (node) { return node.group.visible; })) showToast("No catalog objects in this category yet.");
+    }
+    function showToast(message) {
+      const toast = $("toast");
+      toast.textContent = message;
+      toast.classList.add("visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toast.classList.remove("visible"); }, 2400);
+    }
+    function formatFact(value) {
+      if (value === null || value === undefined || value === "") return "—";
+      if (typeof value === "number") return Number(value.toPrecision(5)).toLocaleString();
+      return String(value);
+    }
+    function renderDetails(obj) {
+      selectedObject = obj;
+      $("detailName").textContent = obj.name || "Unknown object";
+      $("detailType").textContent = String(obj.type || obj.category || "CELESTIAL OBJECT").toUpperCase();
+      $("detailSubtitle").textContent = obj.subtitle || obj.host || obj.descriptionShort || (obj.category === "planet" ? "A world in our Solar System" : "An object in the observable universe");
+      $("detailSummary").textContent = obj.description || "Explore the linked references below to learn more about this object.";
+      $("visualCaption").textContent = (obj.system || obj.category || "DEEP SPACE").toUpperCase() + " / PROFILE";
+      $("detailOrb").style.setProperty("--orb-color", obj.color || "#8b9cf3");
+      $("detailOrb").className = "visual-orb " + (obj.category || "planet") + "-orb";
+      $("detailOrb").innerHTML = "<span></span><i></i>";
+      const facts = obj.facts && typeof obj.facts === "object" ? Object.entries(obj.facts).slice(0, 8) : [];
+      $("detailFacts").innerHTML = facts.map(function (entry) {
+        return '<div class="fact-card"><span>' + escapeHtml(entry[0]) + '</span><strong>' + escapeHtml(formatFact(entry[1])) + '</strong></div>';
+      }).join("") || '<div class="fact-empty">No additional measurements supplied for this entry.</div>';
+      const sources = Array.isArray(obj.sources) ? obj.sources : [];
+      $("detailSources").innerHTML = sources.map(function (source) {
+        const url = typeof source === "string" ? source : source.url;
+        const label = typeof source === "string" ? new URL(source).hostname.replace("www.", "") : source.label || source.publisher || "Open source";
+        return '<a class="source-link" href="' + escapeHtml(url || "#") + '" target="_blank" rel="noopener noreferrer"><span class="source-icon">↗</span><span><strong>' + escapeHtml(label) + '</strong><small>' + escapeHtml(source.publisher || "Reference link") + '</small></span><span class="source-arrow">↗</span></a>';
+      }).join("") || '<p class="fact-empty">Sources have not been attached to this result yet.</p>';
+      const related = Array.isArray(obj.related) ? obj.related.map(function (id) { return catalog.find(function (item) { return item.id === id; }); }).filter(Boolean).slice(0, 5) : [];
+      $("detailRelated").innerHTML = related.map(function (item) {
+        return '<button class="related-chip" data-related="' + escapeHtml(item.id) + '"><span style="--object-color:' + escapeHtml(item.color || "#aab8fa") + '"></span>' + escapeHtml(item.name) + ' <i>↗</i></button>';
+      }).join("") || '<span class="related-empty">Explore search to discover connected objects.</span>';
+      $("detailRelated").querySelectorAll("[data-related]").forEach(function (button) {
+        button.addEventListener("click", function () { const item = catalog.find(function (entry) { return entry.id === button.dataset.related; }); if (item) selectObject(item); });
+      });
+      detailPanel.classList.add("open");
+      detailPanel.setAttribute("aria-hidden", "false");
+      shell.classList.add("has-selection");
+      $("sceneHint").classList.add("dimmed");
+      $("sceneLegend").classList.add("dimmed");
+      $("introBlock").classList.add("dimmed");
+    }
+    function selectObject(obj) {
+      if (!obj) return;
+      const original = catalog.find(function (entry) { return entry.id === obj.id; });
+      const item = Object.assign({}, original || {}, obj);
+      if (!item.id) item.id = "custom-" + String(item.name || "object").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      if (!item.position) item.position = positionFor(item);
+      if (!objectNodes.has(item.id)) {
+        catalog.push(item);
+        createObject(item);
+        $("catalogCount").textContent = catalog.length + " INDEXED OBJECTS";
+      }
+      const node = objectNodes.get(item.id);
+      if (!node) return;
+      node.group.visible = true;
+      node.object = Object.assign({}, node.object, item);
+      node.group.userData.object = node.object;
+      item.position = node.group.position.toArray();
+      renderDetails(item);
+      if (visibleFilter !== "all" && getCategory(item) !== visibleFilter) applyFilter("all");
+      const objectPosition = node.group.position.clone();
+      const distance = Math.max(5, Math.min(13, node.baseRadius * 8 + 4));
+      const viewDirection = new THREE.Vector3(0.12, 0.23, 1).applyQuaternion(camera.quaternion).normalize();
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+      targetGoal = objectPosition.clone().sub(right.multiplyScalar(Math.min(4.4, distance * 0.39)));
+      cameraGoal = targetGoal.clone().add(viewDirection.multiplyScalar(distance));
+      node.group.traverse(function (child) {
+        if (child.material && child.material.emissive) {
+          child.material.emissive.set(item.color || "#ffffff");
+          child.material.emissiveIntensity = 0.22;
+        }
+      });
+      searchResults.classList.remove("open");
+      searchInput.blur();
+      if (window.innerWidth < 720) $("sceneHint").classList.add("dimmed");
+    }
+    function closeDetails() {
+      detailPanel.classList.remove("open");
+      detailPanel.setAttribute("aria-hidden", "true");
+      shell.classList.remove("has-selection");
+      $("sceneHint").classList.remove("dimmed");
+      $("sceneLegend").classList.remove("dimmed");
+      $("introBlock").classList.remove("dimmed");
+      selectedObject = null;
+      cameraGoal = new THREE.Vector3(0, 10, 31);
+      targetGoal = new THREE.Vector3(3.2, 0, 0);
+    }
+    async function searchCatalog(query) {
+      const trimmed = query.trim();
+      if (!trimmed) { searchResults.classList.remove("open"); return; }
+      searchResults.innerHTML = '<div class="search-loading"><span class="loading-spinner"></span> Searching astronomical catalogs…</div>';
+      searchResults.classList.add("open");
+      try {
+        const response = await fetch("/api/search?q=" + encodeURIComponent(trimmed));
+        if (!response.ok) throw new Error("Search request failed");
+        const data = await response.json();
+        const items = Array.isArray(data.results) ? data.results : [];
+        if (!items.length) {
+          searchResults.innerHTML = '<div class="search-empty">No exact match for <strong>' + escapeHtml(trimmed) + '</strong>.<small>Try another name or a broader term.</small></div>';
+          return;
+        }
+        searchResults.innerHTML = '<div class="search-result-heading">' + items.length + ' RESULTS <span>CATALOG + REFERENCES</span></div>' + items.map(function (item, index) {
+          return '<button class="search-result" role="option" data-result-index="' + index + '"><span class="result-symbol ' + escapeHtml(item.category || "reference") + '">' + iconFor(item.category) + '</span><span class="result-copy"><strong>' + escapeHtml(item.name) + '</strong><small>' + escapeHtml(item.type || item.category || "Reference") + ' · ' + escapeHtml(item.subtitle || item.host || (item.external ? "External reference" : "Astronomical catalog")) + '</small></span><span class="result-enter">↗</span></button>';
+        }).join("");
+        searchResults.querySelectorAll("[data-result-index]").forEach(function (button) {
+          button.addEventListener("click", function () { selectObject(items[Number(button.dataset.resultIndex)]); });
+        });
+      } catch (error) {
+        searchResults.innerHTML = '<div class="search-empty">Search is unavailable right now.<small>Make sure the backend is running with <code>node server.js</code>.</small></div>';
+      }
+    }
+    function iconFor(category) {
+      return ({ planet: "◉", moon: "◌", "dwarf-planet": "◉", asteroid: "◇", exoplanet: "⊙", star: "✦", galaxy: "◎", nebula: "✳", deep: "✳", "black-hole": "◉", reference: "↗" })[category] || "✧";
+    }
+    searchInput.addEventListener("input", function () {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { searchCatalog(searchInput.value); }, 240);
+    });
+    searchInput.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") { searchResults.classList.remove("open"); searchInput.blur(); }
+      if (event.key === "Enter") {
+        const first = searchResults.querySelector("[data-result-index]");
+        if (first) first.click();
+        else searchCatalog(searchInput.value);
+      }
+    });
+    document.addEventListener("click", function (event) {
+      if (!$("searchWrap").contains(event.target)) searchResults.classList.remove("open");
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) { event.preventDefault(); searchInput.focus(); }
+      if (event.key === "Escape" && detailPanel.classList.contains("open")) closeDetails();
+    });
+    $("closeDetails").addEventListener("click", closeDetails);
+    $("resetView").addEventListener("click", function () { closeDetails(); applyFilter("all"); showToast("Back to the big picture."); });
+    $("zoomIn").addEventListener("click", function () { camera.position.addScaledVector(camera.position.clone().sub(controls.target).normalize(), -2.8); });
+    $("zoomOut").addEventListener("click", function () { camera.position.addScaledVector(camera.position.clone().sub(controls.target).normalize(), 2.8); });
+    $("toggleLabels").addEventListener("click", function () {
+      labelsVisible = !labelsVisible;
+      objectNodes.forEach(function (node) { node.label.visible = labelsVisible; });
+      $("toggleLabels").classList.toggle("active", labelsVisible);
+      showToast(labelsVisible ? "Object labels enabled." : "Object labels hidden.");
+    });
+    $("toggleOrbits").addEventListener("click", function () {
+      orbitsVisible = !orbitsVisible;
+      orbitNodes.forEach(function (node) { node.visible = orbitsVisible; });
+      $("toggleOrbits").classList.toggle("active", orbitsVisible);
+      showToast(orbitsVisible ? "Orbit paths enabled." : "Orbit paths hidden.");
+    });
+    document.querySelectorAll(".category-chip").forEach(function (chip) { chip.addEventListener("click", function () { applyFilter(chip.dataset.filter); }); });
+    document.querySelectorAll("[data-object]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        const item = catalog.find(function (obj) { return obj.id === button.dataset.object; });
+        if (item) selectObject(item); else { searchInput.value = button.dataset.object.replace(/-/g, " "); searchCatalog(searchInput.value); }
+      });
+    });
+    renderer.domElement.addEventListener("pointermove", function (event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const intersections = raycaster.intersectObjects(clickableMeshes.filter(function (mesh) { return mesh.visible && mesh.parent && mesh.parent.visible; }), false);
+      const hit = intersections.length ? intersections[0].object.userData.object : null;
+      renderer.domElement.style.cursor = hit ? "pointer" : "grab";
+      if (hit && (!hovered || hovered.id !== hit.id)) {
+        hovered = hit;
+        $("hoverLabel").textContent = hit.name + "  ·  CLICK TO EXPLORE";
+        $("hoverLabel").style.left = Math.min(event.clientX + 15, window.innerWidth - 250) + "px";
+        $("hoverLabel").style.top = Math.min(event.clientY + 15, window.innerHeight - 50) + "px";
+        $("hoverLabel").classList.add("visible");
+      } else if (!hit) { hovered = null; $("hoverLabel").classList.remove("visible"); }
+    });
+    renderer.domElement.addEventListener("pointerleave", function () { hovered = null; $("hoverLabel").classList.remove("visible"); });
+    renderer.domElement.addEventListener("click", function (event) {
+      if (event.button !== 0) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const intersections = raycaster.intersectObjects(clickableMeshes.filter(function (mesh) { return mesh.visible && mesh.parent && mesh.parent.visible; }), false);
+      if (intersections.length) selectObject(intersections[0].object.userData.object);
+    });
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      controls.update();
+      if (cameraGoal && targetGoal) {
+        camera.position.lerp(cameraGoal, 0.055);
+        controls.target.lerp(targetGoal, 0.055);
+        if (camera.position.distanceTo(cameraGoal) < 0.04 && controls.target.distanceTo(targetGoal) < 0.04) { cameraGoal = null; targetGoal = null; }
+      }
+      objectNodes.forEach(function (node) {
+        if (node.object.category === "planet" || node.object.category === "exoplanet" || node.object.category === "moon") {
+          if (node.group.visible) node.group.rotation.y += delta * (node.object.category === "moon" ? 0.24 : 0.07);
+        }
+      });
+      const t = performance.now() * 0.0003;
+      renderer.domElement.style.opacity = String(0.97 + Math.sin(t) * 0.03);
+      renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
+    }
+    animate();
+    function resize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    window.addEventListener("resize", resize);
+
+    async function boot() {
+      try {
+        const response = await fetch("/api/catalog");
+        if (!response.ok) throw new Error("Catalog not ready");
+        const data = await response.json();
+        catalog = Array.isArray(data.objects) ? data.objects : [];
+        catalog.forEach(function (obj) {
+          if (obj.orbitRadius) makeOrbit(obj.orbitRadius);
+          createObject(obj);
+        });
+        $("catalogCount").textContent = catalog.length + " INDEXED OBJECTS";
+        $("connectionLabel").textContent = "SKY ONLINE";
+        showToast("Cosmos loaded. Choose an object to begin.");
+      } catch (error) {
+        $("connectionLabel").textContent = "OFFLINE";
+        $("catalogCount").textContent = "CATALOG OFFLINE";
+        showToast("Start the explorer with node server.js to load the catalog.");
+      }
+    }
+    boot();
+  </script>
+</body>
+</html>
