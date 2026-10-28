@@ -40,6 +40,8 @@ function App() {
   const [archiveQuery, setArchiveQuery] = useState("");
   const [archiveMediaQuery, setArchiveMediaQuery] = useState("");
   const [archiveMediaType, setArchiveMediaType] = useState("image");
+  const [researchQuery, setResearchQuery] = useState("");
+  const [researchPage, setResearchPage] = useState(0);
   const [approachDays, setApproachDays] = useState("90");
   const [approachDistance, setApproachDistance] = useState("0.05");
   const [fireballDateMin, setFireballDateMin] = useState("");
@@ -660,6 +662,7 @@ function App() {
     const restart = reset !== false;
     const startOffset = restart ? 0 : archiveOffset;
     const cursor = restart ? "" : archiveCursor;
+    const pageNumber = restart ? 1 : researchPage + 1;
     setArchiveMode(target);
     setArchiveLoading(true);
     setArchiveError("");
@@ -685,6 +688,9 @@ function App() {
     } else if (target === "media") {
       const mediaTerm = archiveMediaQuery.trim() || (selected && selected.name) || "galaxy";
       url = "/api/media?q=" + encodeURIComponent(mediaTerm) + "&limit=12&type=" + encodeURIComponent(archiveMediaType);
+    } else if (target === "research") {
+      const researchTerm = researchQuery.trim() || (selected && selected.name) || "exoplanet atmosphere";
+      url = "/api/research?q=" + encodeURIComponent(researchTerm) + "&limit=10&page=" + pageNumber;
     } else {
       setArchiveLoading(false);
       return;
@@ -696,7 +702,7 @@ function App() {
       })
       .then(function (data) {
         if (data.source_status === "unavailable") throw new Error("This archive is temporarily unavailable. Try again shortly.");
-        const incoming = ["close-approaches", "fireballs"].includes(target) ? (data.events || []) : target === "media" ? (data.items || []) : (data.objects || []);
+        const incoming = ["close-approaches", "fireballs"].includes(target) ? (data.events || []) : ["media", "research"].includes(target) ? (data.items || []) : (data.objects || []);
         setArchiveRows(function (previous) {
           const base = restart ? [] : previous;
           const ids = new Set(base.map(function (item) { return item.id; }));
@@ -704,14 +710,15 @@ function App() {
         });
         if (target === "small-bodies") setArchiveOffset(startOffset + incoming.length);
         if (target === "exoplanets") setArchiveCursor(data.next_cursor || "");
-        setArchiveHasMore(target === "small-bodies" || target === "exoplanets" ? Boolean(data.has_more) : false);
-        if (!["close-approaches", "fireballs", "media"].includes(target)) {
+        if (target === "research") setResearchPage(pageNumber);
+        setArchiveHasMore(["small-bodies", "exoplanets", "research"].includes(target) ? Boolean(data.has_more) : false);
+        if (!["close-approaches", "fireballs", "media", "research"].includes(target)) {
           setCatalog(function (previous) {
             const ids = new Set(previous.map(function (item) { return item.id; }));
             return previous.concat(incoming.filter(function (item) { return !ids.has(item.id); }));
           });
         }
-        setApiStatus(target === "exoplanets" ? "NASA EXOPLANET ARCHIVE" : target === "small-bodies" || target === "close-approaches" || target === "fireballs" || target === "impact-monitor" ? "NASA/JPL DATA" : target === "media" ? "NASA MEDIA LIBRARY" : "ESA GAIA DR3");
+        setApiStatus(target === "exoplanets" ? "NASA EXOPLANET ARCHIVE" : target === "small-bodies" || target === "close-approaches" || target === "fireballs" || target === "impact-monitor" ? "NASA/JPL DATA" : target === "media" ? "NASA MEDIA LIBRARY" : target === "research" ? "NASA RESEARCH SERVER" : "ESA GAIA DR3");
         if (!incoming.length) setArchiveError("No records were returned for this page or filter. Try different search criteria.");
       })
       .catch(function (error) { setArchiveError(error.message || "Could not reach this source."); })
@@ -942,6 +949,7 @@ function App() {
           <button className={archiveMode === "fireballs" ? "active" : ""} onClick={function () { setArchiveMode("fireballs"); loadArchive("fireballs", true); }} disabled={archiveLoading}>Fireballs</button>
           <button className={archiveMode === "impact-monitor" ? "active" : ""} onClick={function () { setArchiveMode("impact-monitor"); loadArchive("impact-monitor", true); }} disabled={archiveLoading}>Sentry monitor</button>
           <button className={archiveMode === "media" ? "active" : ""} onClick={function () { setArchiveMode("media"); loadArchive("media", true); }} disabled={archiveLoading}>NASA media</button>
+          <button className={archiveMode === "research" ? "active" : ""} onClick={function () { setArchiveMode("research"); loadArchive("research", true); }} disabled={archiveLoading}>NASA research</button>
         </div>
         {archiveMode === "coverage" && <div className="coverage-view">
           <div className="archive-intro"><span>ARCHIVE STATUS</span><h3>Many catalogs. Different skies.</h3><p>Counts below are source-specific and overlap. A source marked queryable is available for bounded searches—not downloaded in full.</p><button disabled={coverageLoading} onClick={loadCoverage}><span>↻</span> {coverageLoading ? "Checking archives…" : "Refresh source status"}</button></div>
@@ -962,6 +970,13 @@ function App() {
             <button type="submit" disabled={archiveLoading}>Search</button>
           </form>
           <div className="archive-help">NASA Exoplanet Archive · PSCompPars · cursor pagination</div>
+        </div>}
+        {archiveMode === "research" && <div className="archive-controls">
+          <form className="archive-search-form" onSubmit={function (event) { event.preventDefault(); loadArchive("research", true); }}>
+            <input value={researchQuery} onChange={function (event) { setResearchQuery(event.target.value); }} placeholder="Search NASA papers, reports and mission studies…" aria-label="Search NASA research records" />
+            <button type="submit" disabled={archiveLoading}>Search</button>
+          </form>
+          <div className="archive-help">NASA Technical Reports Server · public citations, abstracts, technical reports and mission papers.</div>
         </div>}
         {archiveMode === "small-bodies" && <div className="archive-controls">
           <div className="archive-filter-grid"><label>Object family<select value={archiveKind} onChange={function (event) { setArchiveKind(event.target.value); }}><option value="all">Asteroids + comets</option><option value="asteroid">Asteroids only</option><option value="comet">Comets only</option></select></label><label className="checkbox-filter"><input type="checkbox" checked={archiveNeoOnly} onChange={function (event) { setArchiveNeoOnly(event.target.checked); }} /> Near-Earth objects only</label></div>
@@ -992,7 +1007,7 @@ function App() {
           <button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("impact-monitor", true); }}>{archiveLoading ? "Querying Sentry…" : "Refresh Sentry monitoring ↗"}</button>
           <div className="archive-help">Sentry lists modeled possible-impact cases—not predictions that an impact will occur. Probabilities and ratings are uncertain and time-dependent; read the original case before interpreting a value.</div>
         </div>}
-        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "close-approaches" ? "UPCOMING EVENTS" : archiveMode === "fireballs" ? "ATMOSPHERIC OBSERVATIONS" : archiveMode === "impact-monitor" ? "MODELED MONITORING CASES" : archiveMode === "media" ? "NASA MEDIA RESULTS" : "ARCHIVE RECORDS"}</span><span>{archiveRows.length.toLocaleString()} LOADED</span></div>
+        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "close-approaches" ? "UPCOMING EVENTS" : archiveMode === "fireballs" ? "ATMOSPHERIC OBSERVATIONS" : archiveMode === "impact-monitor" ? "MODELED MONITORING CASES" : archiveMode === "media" ? "NASA MEDIA RESULTS" : archiveMode === "research" ? "SCIENTIFIC PUBLICATIONS" : "ARCHIVE RECORDS"}</span><span>{archiveRows.length.toLocaleString()} LOADED</span></div>
         {archiveMode !== "coverage" && <div className="archive-results">
           {archiveLoading && !archiveRows.length && <div className="archive-empty"><span className="spinner"></span> Querying the remote catalog…</div>}
           {!archiveLoading && !archiveRows.length && !archiveError && <div className="archive-empty">Choose a query above to discover records from this source.</div>}
@@ -1001,6 +1016,13 @@ function App() {
               return <a className="archive-media-card" key={item.id} href={item.page_url} target="_blank" rel="noopener noreferrer">
                 <span className="archive-media-thumb">{item.thumbnail_url ? <img src={item.thumbnail_url} loading="lazy" alt={item.title || "NASA media preview"} /> : <span>NO PREVIEW</span>}</span>
                 <span className="archive-media-copy"><strong>{item.title || item.name}</strong><small>{[item.center, item.date_created].filter(Boolean).join(" · ") || "NASA Image and Video Library"}</small><em>{item.description || item.media_type || "NASA media result"}</em></span><span className="archive-record-arrow">↗</span>
+              </a>;
+            }
+            if (archiveMode === "research") {
+              return <a className="archive-research-card" key={item.id} href={item.page_url} target="_blank" rel="noopener noreferrer">
+                <span className="research-document-icon">⌑</span>
+                <span className="archive-research-copy"><strong>{item.title || item.name}</strong><small>{[item.publication_date, item.center, item.document_type].filter(Boolean).join(" · ") || "NASA Technical Reports Server"}</small><em>{item.abstract || "Open the NASA publication record for abstract, metadata and document links."}</em></span>
+                <span className="archive-record-arrow">↗</span>
               </a>;
             }
             const isEvent = archiveMode === "close-approaches";
