@@ -870,7 +870,7 @@ function App() {
             {!searching && <div className="dropdown-footer">ENTER TO OPEN FIRST RESULT <span>WIKIPEDIA · NASA · ESA</span></div>}
           </div>}
         </form>
-        <div className="header-tools"><span className="system-status"><i></i>{apiStatus}</span><button className="round-tool" title="Reset universe view" onClick={function () { closeDetails(); setCategory("all"); if (sceneApi.current) sceneApi.current.reset(); }} aria-label="Reset universe"><svg viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 0 2.1-5.4L3.5 8.2"></path><path d="M3.5 3.6v4.8h4.8"></path></svg></button></div>
+        <div className="header-tools"><button className="catalogs-button" title="Browse live scientific archives" onClick={function () { setArchiveOpen(true); setArchiveMode("coverage"); if (!coverage && !coverageLoading) loadCoverage(); }}><span>▦</span> ARCHIVES</button><span className="system-status"><i></i>{apiStatus}</span><button className="round-tool" title="Reset universe view" onClick={function () { closeDetails(); setCategory("all"); if (sceneApi.current) sceneApi.current.reset(); }} aria-label="Reset universe"><svg viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 0 2.1-5.4L3.5 8.2"></path><path d="M3.5 3.6v4.8h4.8"></path></svg></button></div>
       </header>
       <main className="main-content">
         {!selected && <section className="hero-copy">
@@ -916,6 +916,71 @@ function App() {
         })}{!sources.length && <p className="no-facts">Search the knowledge index for external source references.</p>}</div>
         {related.length > 0 && <><div className="section-title"><span>CONNECTED OBJECTS</span><i></i></div><div className="related-list">{related.map(function (item) { return <button key={item.id} onClick={function () { chooseObject(item); }}><i style={{ "--orb": item.color || "#ada6ff" }}></i>{item.name}<span>↗</span></button>; })}</div></>}
         <div className="panel-note"><span>✳</span> Visual scale and placement are illustrative; facts link back to scientific references.</div>
+      </aside>}
+      {archiveOpen && <aside className="archive-panel" aria-label="Scientific archive browser">
+        <div className="archive-panel-header">
+          <div><span className="archive-eyebrow"><i></i> LIVE SCIENCE SOURCES</span><h2>Catalog <em>navigator.</em></h2><p>Browse records from the archives behind the map.</p></div>
+          <button className="close-panel archive-close" onClick={function () { setArchiveOpen(false); }} aria-label="Close archive browser">×</button>
+        </div>
+        <div className="archive-mode-row">
+          <button className={archiveMode === "coverage" ? "active" : ""} onClick={function () { setArchiveMode("coverage"); if (!coverage && !coverageLoading) loadCoverage(); }}>Coverage</button>
+          <button className={archiveMode === "exoplanets" ? "active" : ""} onClick={function () { setArchiveMode("exoplanets"); loadArchive("exoplanets", true); }}>Exoplanets</button>
+          <button className={archiveMode === "small-bodies" ? "active" : ""} onClick={function () { setArchiveMode("small-bodies"); loadArchive("small-bodies", true); }}>Asteroids & comets</button>
+          <button className={archiveMode === "close-approaches" ? "active" : ""} onClick={function () { setArchiveMode("close-approaches"); loadArchive("close-approaches", true); }}>Earth approaches</button>
+          <button className={archiveMode === "gaia" ? "active" : ""} onClick={function () { setArchiveMode("gaia"); loadArchive("gaia", true); }}>Gaia stars</button>
+        </div>
+        {archiveMode === "coverage" && <div className="coverage-view">
+          <div className="archive-intro"><span>ARCHIVE STATUS</span><h3>Many catalogs. Different skies.</h3><p>Counts below are source-specific and overlap. A source marked queryable is available for bounded searches—not downloaded in full.</p><button disabled={coverageLoading} onClick={loadCoverage}><span>↻</span> {coverageLoading ? "Checking archives…" : "Refresh source status"}</button></div>
+          {coverageLoading && <div className="archive-empty"><span className="spinner"></span> Checking live source totals…</div>}
+          {coverageError && <div className="archive-error">{coverageError}</div>}
+          {coverage && <><div className="coverage-summary"><span><small>CURATED STARTER</small><strong>{Number(coverage.local_curated_records || 0).toLocaleString()}</strong><i>local objects</i></span><span><small>CATALOG FEEDS</small><strong>{(coverage.sources || []).length}</strong><i>registered sources</i></span></div>
+            <div className="coverage-list">{(coverage.sources || []).map(function (source) {
+              const counts = source.families ? Object.entries(source.families).filter(function (entry) { return entry[1] !== null && entry[1] !== undefined; }).map(function (entry) { return entry[0].replace(/_/g, " ") + ": " + Number(entry[1]).toLocaleString(); }).join(" · ") : (source.record_count !== null && source.record_count !== undefined ? Number(source.record_count).toLocaleString() + " archive rows" : "");
+              const statusText = ({ online: "LIVE COUNT", queryable: "QUERYABLE", supplementary: "SUPPLEMENTARY", unavailable: "OFFLINE" })[source.status] || "REGISTERED";
+              return <div className="coverage-source" key={source.id}><div className="coverage-source-top"><span className={"coverage-source-dot status-" + (source.status || "registered")}></span><strong>{source.name}</strong><small>{statusText}</small></div><p>{counts || source.count_scope || source.scope || "Catalog records are available by query."}</p><a href={source.url} target="_blank" rel="noopener noreferrer">Open source ↗</a></div>;
+            })}</div>
+          </>}
+          <p className="coverage-footnote">Astra federates public archives. This dashboard is not a claim that all objects are mirrored locally or all have distances accurate enough for a 3D position.</p>
+        </div>}
+        {archiveMode === "exoplanets" && <div className="archive-controls">
+          <form className="archive-search-form" onSubmit={function (event) { event.preventDefault(); loadArchive("exoplanets", true); }}>
+            <input value={archiveQuery} onChange={function (event) { setArchiveQuery(event.target.value); }} placeholder="Filter by planet or host-star name…" aria-label="Filter NASA exoplanet archive" />
+            <button type="submit" disabled={archiveLoading}>Search</button>
+          </form>
+          <div className="archive-help">NASA Exoplanet Archive · PSCompPars · cursor pagination</div>
+        </div>}
+        {archiveMode === "small-bodies" && <div className="archive-controls">
+          <div className="archive-filter-grid"><label>Object family<select value={archiveKind} onChange={function (event) { setArchiveKind(event.target.value); }}><option value="all">Asteroids + comets</option><option value="asteroid">Asteroids only</option><option value="comet">Comets only</option></select></label><label className="checkbox-filter"><input type="checkbox" checked={archiveNeoOnly} onChange={function (event) { setArchiveNeoOnly(event.target.checked); }} /> Near-Earth objects only</label></div>
+          <button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("small-bodies", true); }}>{archiveLoading ? "Querying JPL…" : "Query JPL small-body archive ↗"}</button>
+          <div className="archive-help">NASA/JPL SBDB Query API · orbital elements, designations and physical parameters</div>
+        </div>}
+        {archiveMode === "close-approaches" && <div className="archive-controls">
+          <div className="archive-filter-grid"><label>Forecast window<select value={approachDays} onChange={function (event) { setApproachDays(event.target.value); }}><option value="30">Next 30 days</option><option value="90">Next 90 days</option><option value="180">Next 180 days</option><option value="365">Next year</option></select></label><label>Maximum distance<select value={approachDistance} onChange={function (event) { setApproachDistance(event.target.value); }}><option value="0.01">0.01 AU</option><option value="0.05">0.05 AU</option><option value="0.1">0.1 AU</option><option value="0.25">0.25 AU</option><option value="0.5">0.5 AU</option></select></label></div>
+          <button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("close-approaches", true); }}>{archiveLoading ? "Querying JPL…" : "Refresh close-approach forecasts ↗"}</button>
+          <div className="archive-help">Earth close-approach data · model-dependent times and distances · not collision predictions</div>
+        </div>}
+        {archiveMode === "gaia" && <div className="archive-controls"><div className="archive-help">ESA Gaia DR3 · a bounded bright-star sample and coordinate cone searches. The full Gaia archive remains remote.</div><button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("gaia", true); }}>{archiveLoading ? "Querying Gaia…" : "Refresh Gaia star sample ↗"}</button></div>}
+        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "close-approaches" ? "UPCOMING EVENTS" : "ARCHIVE RECORDS"}</span><span>{archiveRows.length.toLocaleString()} LOADED</span></div>}
+        {archiveMode !== "coverage" && <div className="archive-results">
+          {archiveLoading && !archiveRows.length && <div className="archive-empty"><span className="spinner"></span> Querying the remote catalog…</div>}
+          {!archiveLoading && !archiveRows.length && !archiveError && <div className="archive-empty">Choose a query above to discover records from this source.</div>}
+          {archiveRows.map(function (item) {
+            const isEvent = archiveMode === "close-approaches";
+            const title = item.name || item.full_name || item.designation || "Astronomical source";
+            const detail = isEvent
+              ? [item.date, item.distance_au !== null && item.distance_au !== undefined ? Number(item.distance_au).toPrecision(4) + " AU" : null, item.relative_velocity_km_s ? Number(item.relative_velocity_km_s).toFixed(2) + " km/s" : null].filter(Boolean).join(" · ")
+              : (item.subtitle || item.type || item.category || "External archive record");
+            const secondary = isEvent ? "JPL close-approach event" : (item.catalog_source || item.type || item.category || "Archive record");
+            return <button className="archive-record" key={item.id} onClick={function () { selectArchiveItem(item); }}>
+              <span className={"archive-record-symbol " + (item.category || "deep")}>{ICONS[item.category] || "✧"}</span>
+              <span className="archive-record-copy"><strong>{title}</strong><small>{secondary}</small><em>{detail}</em></span>
+              <span className="archive-record-arrow">↗</span>
+            </button>;
+          })}
+          {archiveError && <div className="archive-error">{archiveError}</div>}
+        </div>}
+        {archiveMode !== "coverage" && archiveHasMore && <button className="archive-more" disabled={archiveLoading} onClick={function () { loadArchive(archiveMode, false); }}>{archiveLoading ? "Loading more records…" : "Load next page ↗"}</button>}
+        <div className="archive-panel-footer"><span><i></i> SOURCES LINKED TO ORIGINAL ARCHIVES</span><span>POSITIONS MAY BE UNAVAILABLE</span></div>
       </aside>}
       <section className="explorer-dock">
         <div className="dock-heading"><div><span className="dock-eyebrow">YOUR NEXT DESTINATION</span><h2>Explore the cosmos <em>↘</em></h2></div><span className="object-count">{mappedCount} PLOTTED / {catalog.length} INDEXED</span></div>
