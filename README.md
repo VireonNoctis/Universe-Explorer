@@ -78,6 +78,7 @@ Quick checks:
 curl http://localhost:4567/api/health
 curl http://localhost:4567/api/catalog
 curl 'http://localhost:4567/api/search?q=TRAPPIST-1'
+curl 'http://localhost:4567/api/archive/exoplanets?limit=40'
 curl 'http://localhost:4567/api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150'
 curl http://localhost:4567/api/ephemeris
 ```
