@@ -1539,8 +1539,7 @@ class AstraServer < Sinatra::Base
     halt 400, { error: 'Limit must be between 1 and 20; page between 1 and 10000.' }.to_json unless limit.between?(1, 20) && page.between?(1, 10_000)
     result = Astra.nasa_research_search(query, limit: limit, page: page)
     status 503 if result[:source_status] == 'unavailable'
-    result.delete(:cached_at)
-    result.to_json
+    result.reject { |key, _value| key == :cached_at }.to_json
   end
 
   get '/api/media' do
@@ -1553,8 +1552,7 @@ class AstraServer < Sinatra::Base
     halt 400, { error: 'type must be image, video, or audio.' }.to_json unless %w[image video audio].include?(media_type)
     result = Astra.nasa_media_search(query, limit: limit, media_type: media_type)
     status 503 if result[:source_status] == 'unavailable'
-    result.delete(:cached_at)
-    result.to_json
+    result.reject { |key, _value| key == :cached_at }.to_json
   end
 
   get '/api/coverage' do
