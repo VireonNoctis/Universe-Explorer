@@ -74,6 +74,29 @@ function App() {
             if (!alive) return;
             ephemerisRef.current = data.positions || {};
             if (sceneApi.current) sceneApi.current.ephemeris(ephemerisRef.current);
+            setCatalog(function (previous) {
+              return previous.map(function (item) {
+                const position = ephemerisRef.current[item.id];
+                if (!position || !Array.isArray(position.au) || !Array.isArray(position.ly)) return item;
+                return Object.assign({}, item, {
+                  position: position.ly, local_position_au: position.au,
+                  distance_from_sun_au: Math.hypot.apply(null, position.au),
+                  position_source: position.source || "NASA/JPL Horizons",
+                  position_accuracy: "JPL Horizons current heliocentric ICRF vector",
+                  map_status: "plotted"
+                });
+              });
+            });
+            setSelected(function (current) {
+              const position = current && ephemerisRef.current[current.id];
+              return position ? Object.assign({}, current, {
+                position: position.ly, local_position_au: position.au,
+                distance_from_sun_au: Math.hypot.apply(null, position.au),
+                position_source: position.source || "NASA/JPL Horizons",
+                position_accuracy: "JPL Horizons current heliocentric ICRF vector",
+                map_status: "plotted"
+              }) : current;
+            });
           })
           .catch(function () { if (alive) toast("JPL Horizons is unavailable; mean orbital distances remain available."); });
       })
@@ -120,8 +143,8 @@ function App() {
     controls.dampingFactor = 0.055;
     controls.rotateSpeed = 0.46;
     controls.zoomSpeed = 0.8;
-    controls.minDistance = 3;
-    controls.maxDistance = 180;
+    controls.minDistance = 0.1;
+    controls.maxDistance = 1e10;
     controls.target.set(0, 0, 0);
     scene.add(new THREE.AmbientLight(0x9daee2, 1.3));
     const key = new THREE.PointLight(0xeaf2ff, 1450, 200, 1.7);
@@ -384,6 +407,8 @@ function App() {
     }
     function setScaleMode(mode) {
       scaleMode = mode === "system" ? "system" : "universe";
+      controls.minDistance = scaleMode === "system" ? 0.02 : 0.1;
+      controls.maxDistance = scaleMode === "system" ? 160 : 1e10;
       nodes.forEach(function (node) {
         const solar = isSolarSystem(node);
         if (scaleMode === "system" && solar) {
@@ -513,7 +538,7 @@ function App() {
       zoom: function (delta) {
         const direction = camera.position.clone().sub(controls.target).normalize();
         const range = camera.position.distanceTo(controls.target);
-        const adjusted = scaleMode === "system" ? delta : delta * Math.max(0.5, range * 0.12);
+        const adjusted = delta * Math.max(0.02, range * 0.12);
         camera.position.addScaledVector(direction, adjusted);
       },
       labels: function (value) {
