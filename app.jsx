@@ -22,6 +22,7 @@ function App() {
   const [labelsOn, setLabelsOn] = useState(true);
   const [orbitsOn, setOrbitsOn] = useState(true);
   const [sceneReady, setSceneReady] = useState(false);
+  const [viewScale, setViewScale] = useState("universe");
   const [apiStatus, setApiStatus] = useState("CONNECTING");
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
@@ -30,6 +31,7 @@ function App() {
   const timerRef = useRef(null);
   const noticeTimer = useRef(null);
   const selectedRef = useRef(null);
+  const ephemerisRef = useRef({});
   selectedRef.current = selected;
 
   const visibleCatalog = useMemo(function () {
@@ -52,7 +54,27 @@ function App() {
       .then(function (data) {
         if (!alive) return;
         setCatalog(data.objects || []);
-        setApiStatus("SYSTEM ONLINE");
+        setApiStatus("CATALOG ONLINE");
+        fetch("/api/sky?limit=450")
+          .then(function (response) { if (!response.ok) throw new Error("Gaia sample unavailable"); return response.json(); })
+          .then(function (sky) {
+            if (!alive) return;
+            const incoming = (sky.objects || []).filter(function (item) { return Array.isArray(item.position); });
+            setCatalog(function (previous) {
+              const ids = new Set(previous.map(function (item) { return item.id; }));
+              return previous.concat(incoming.filter(function (item) { return !ids.has(item.id); }));
+            });
+            setApiStatus("GAIA + CATALOGS");
+          })
+          .catch(function () { if (alive) setApiStatus("LOCAL + LIVE SEARCH"); });
+        fetch("/api/ephemeris")
+          .then(function (response) { if (!response.ok) throw new Error("Ephemeris unavailable"); return response.json(); })
+          .then(function (data) {
+            if (!alive) return;
+            ephemerisRef.current = data.positions || {};
+            if (sceneApi.current) sceneApi.current.ephemeris(ephemerisRef.current);
+          })
+          .catch(function () { if (alive) toast("JPL Horizons is unavailable; mean orbital distances remain available."); });
       })
       .catch(function () { if (alive) { setApiStatus("API OFFLINE"); toast("Start the server with ruby server.rb to load the live catalog."); } });
     return function () { alive = false; clearTimeout(timerRef.current); clearTimeout(noticeTimer.current); };
@@ -81,9 +103,9 @@ function App() {
     const host = sceneRef.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#050713");
-    scene.fog = new THREE.FogExp2("#050713", 0.003);
-    const camera = new THREE.PerspectiveCamera(49, host.clientWidth / Math.max(host.clientHeight, 1), 0.1, 1800);
-    camera.position.set(0, 13, 39);
+    // The map spans light-years to millions of light-years; fixed-distance fog would mislead.
+    const camera = new THREE.PerspectiveCamera(49, host.clientWidth / Math.max(host.clientHeight, 1), 1e-7, 1e10);
+    camera.position.set(0, 6, 14);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(host.clientWidth, host.clientHeight);
@@ -117,6 +139,8 @@ function App() {
     const nodes = new Map();
     const animated = [];
     const orbits = [];
+    const orbitRadii = new Set();
+    let scaleMode = "universe";
     let raf = 0;
     let cameraGoal = null;
     let targetGoal = null;
@@ -131,7 +155,7 @@ function App() {
     const starPositions = new Float32Array(9500 * 3);
     const starColors = new Float32Array(9500 * 3);
     for (let i = 0; i < 9500; i++) {
-      const rad = 100 + random() * 470;
+      const rad = 70 + random() * 430;
       const theta = random() * Math.PI * 2;
       const phi = Math.acos(2 * random() - 1);
       starPositions[i * 3] = rad * Math.sin(phi) * Math.cos(theta);
@@ -146,7 +170,7 @@ function App() {
     const starGeometry = new THREE.BufferGeometry();
     starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
     starGeometry.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
-    const starfield = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size: 0.29, vertexColors: true, transparent: true, opacity: 0.87, sizeAttenuation: true, depthWrite: false }));
+    const starfield = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size: 0.17, vertexColors: true, transparent: true, opacity: 0.22, sizeAttenuation: true, depthWrite: false }));
     scene.add(starfield);
     const dustPositions = new Float32Array(1800 * 3);
     for (let i = 0; i < 1800; i++) {
@@ -279,9 +303,10 @@ function App() {
     }
     function makeNode(item) {
       if (!item || !item.id || nodes.has(item.id)) return nodes.get(item.id);
-      const radius = Math.max(0.16, Math.min(Number(item.size) || 0.3, 1.35));
+      if (!Array.isArray(item.position) || item.position.length !== 3 || item.map_status === "unplotted") return null;
+      const radius = Math.max(0.025, Math.min(Number(item.size) || 0.08, 0.12));
       const group = new THREE.Group();
-      group.position.fromArray(item.position || [0, 0, 0]);
+      group.position.fromArray(item.position);
       group.userData.item = item;
       let hit;
       if (item.category === "galaxy") {
@@ -332,17 +357,59 @@ function App() {
       label.title = "Explore " + item.name;
       label.addEventListener("click", function (event) { event.stopPropagation(); chooseObject(item); });
       labelLayer.appendChild(label);
-      const node = { item: item, group: group, hit: hit, label: label, radius: radius };
+      const node = { item: item, group: group, hit: hit, label: label, radius: radius, basePosition: item.position.slice() };
       nodes.set(item.id, node);
+      if (item.map_frame === "solar-system" && item.orbit_radius_au && !orbitRadii.has(item.orbit_radius_au)) addOrbit(item.orbit_radius_au, [0, 0, 0]);
       return node;
     }
     function addCatalog(items) {
-      (items || []).forEach(function (item) { makeNode(item); });
+      (items || []).forEach(function (item) { if (Array.isArray(item.position)) makeNode(item); });
+      setFilter("all");
+    }
+    function isSolarSystem(node) {
+      return node.item.map_frame === "solar-system" || node.item.system === "Solar System";
     }
     function setFilter(filter) {
       nodes.forEach(function (node) {
-        node.group.visible = filter === "all" || node.item.category === filter || (filter === "planet" && node.item.category === "dwarf-planet");
-        node.label.style.display = node.group.visible && labelsOn ? "flex" : "none";
+        const solar = isSolarSystem(node);
+        const inFrame = scaleMode === "system" ? solar : (!solar || node.item.id === "sun");
+        const inCategory = filter === "all" || node.item.category === filter || (filter === "planet" && node.item.category === "dwarf-planet");
+        node.group.visible = inFrame && inCategory;
+        const showLabel = node.group.visible && labelsOn && (scaleMode === "system" || !solar || node.item.id === "sun");
+        node.label.style.display = showLabel ? "flex" : "none";
+      });
+      orbits.forEach(function (orbit) { orbit.visible = scaleMode === "system" && orbitsOn; });
+    }
+    function setScaleMode(mode) {
+      scaleMode = mode === "system" ? "system" : "universe";
+      nodes.forEach(function (node) {
+        const solar = isSolarSystem(node);
+        if (scaleMode === "system" && solar) {
+          const local = node.item.local_position_au || node.item.position.map(function (value) { return value * 63241.077084; });
+          node.group.position.fromArray(local);
+        } else {
+          node.group.position.fromArray(node.item.position);
+        }
+      });
+      orbits.forEach(function (orbit) { orbit.visible = scaleMode === "system" && orbitsOn; });
+      setFilter("all");
+      cameraGoal = scaleMode === "system" ? new THREE.Vector3(0, 11, 37) : new THREE.Vector3(0, 6, 14);
+      targetGoal = new THREE.Vector3(0, 0, 0);
+    }
+    function applyEphemeris(values) {
+      Object.keys(values || {}).forEach(function (id) {
+        const node = nodes.get(id);
+        const vector = values[id];
+        if (!node || !vector || !Array.isArray(vector.ly) || !Array.isArray(vector.au)) return;
+        node.item.position = vector.ly;
+        node.item.local_position_au = vector.au;
+        node.item.position_source = vector.source || "NASA/JPL Horizons";
+        node.item.position_accuracy = "JPL Horizons current heliocentric ICRF vector";
+        node.item.map_status = "plotted";
+        node.basePosition = vector.ly.slice();
+        if (scaleMode === "system" && isSolarSystem(node)) node.group.position.fromArray(vector.au);
+        else if (scaleMode === "universe") node.group.position.fromArray(vector.ly);
+        node.group.userData.item = node.item;
       });
     }
     function focus(item) {
@@ -351,8 +418,8 @@ function App() {
       const point = node.group.position.clone();
       const viewDirection = new THREE.Vector3(0.12, 0.24, 1).applyQuaternion(camera.quaternion).normalize();
       const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
-      const distance = Math.max(6, Math.min(14, node.radius * 7 + 5));
-      targetGoal = point.clone().sub(cameraRight.multiplyScalar(Math.min(4.6, distance * 0.39)));
+      const distance = scaleMode === "system" ? 5.2 : 7.0;
+      targetGoal = point.clone().sub(cameraRight.multiplyScalar(Math.min(scaleMode === "system" ? 2 : 2.7, distance * 0.36)));
       cameraGoal = targetGoal.clone().add(viewDirection.multiplyScalar(distance));
     }
     function resize() {
@@ -426,13 +493,17 @@ function App() {
       addCatalog: addCatalog,
       filter: setFilter,
       focus: focus,
+      scale: setScaleMode,
+      ephemeris: applyEphemeris,
       reset: function () {
-        cameraGoal = new THREE.Vector3(0, 13, 39);
+        setScaleMode("universe");
+        cameraGoal = new THREE.Vector3(0, 6, 14);
         targetGoal = new THREE.Vector3(0, 0, 0);
       },
       zoom: function (delta) {
         const direction = camera.position.clone().sub(controls.target).normalize();
-        camera.position.addScaledVector(direction, delta);
+        const adjusted = scaleMode === "system" ? delta : delta * Math.max(1, camera.position.distanceTo(controls.target) * 0.1);
+        camera.position.addScaledVector(direction, adjusted);
       },
       labels: function (value) {
         nodes.forEach(function (node) { node.label.style.display = value && node.group.visible ? "flex" : "none"; });
@@ -453,11 +524,11 @@ function App() {
     };
     sceneApi.current = api;
     addCatalog(catalog);
-    [
-      [2.4, [-12, 0, 0]], [3.2, [-12, 0, 0]], [4.1, [-12, 0, 0]],
-      [5.1, [-12, 0, 0]], [7.1, [-12, 0, 0]], [9.0, [-12, 0, 0]],
-      [11.2, [-12, 0, 0]], [13.5, [-12, 0, 0]]
-    ].forEach(function (pair) { addOrbit(pair[0], pair[1]); });
+    catalog.filter(function (item) { return item.map_frame === "solar-system" && item.orbit_radius_au; })
+      .map(function (item) { return item.orbit_radius_au; })
+      .filter(function (radius, index, values) { return values.indexOf(radius) === index; })
+      .forEach(function (radius) { if (!orbitRadii.has(radius)) addOrbit(radius, [0, 0, 0]); });
+    orbits.forEach(function (orbit) { orbit.visible = false; });
     render();
     setSceneReady(true);
     return function () {
@@ -482,10 +553,13 @@ function App() {
     setSearch(item.name || "");
     setActiveTab("Overview");
     setSelected(item);
+    const nextScale = item.map_frame === "solar-system" || item.system === "Solar System" ? "system" : "universe";
+    setViewScale(nextScale);
     if (sceneApi.current) {
-      sceneApi.current.addCatalog([item]);
+      if (Array.isArray(item.position)) sceneApi.current.addCatalog([item]);
+      sceneApi.current.scale(nextScale);
       sceneApi.current.filter("all");
-      sceneApi.current.focus(item);
+      if (Array.isArray(item.position)) sceneApi.current.focus(item);
     }
     setCategory("all");
     if (item.external && !item.descriptionLong && !item.facts) {
@@ -499,6 +573,7 @@ function App() {
   }
   function closeDetails() {
     setSelected(null);
+    setViewScale("universe");
     if (sceneApi.current) sceneApi.current.reset();
   }
   function submitSearch(event) {
@@ -570,7 +645,8 @@ function App() {
           <div className="hero-foot"><span className="live-star"></span> INTERACTIVE 3D MAP <b>·</b> POSITIONS ILLUSTRATIVE</div>
         </section>}
         <div className={"scene-instructions" + (selected ? " hidden" : "")}><span className="mouse-outline"><i></i></span><span>DRAG TO EXPLORE <b>·</b> SCROLL TO TRAVEL</span></div>
-        <div className="sky-legend"><span><i className="legend-planet"></i> PLANETS</span><span><i className="legend-star"></i> STARS</span><span><i className="legend-galaxy"></i> DEEP SPACE</span></div>
+        <div className="sky-legend"><span><i className="legend-planet"></i> CATALOG OBJECTS</span><span><i className="legend-star"></i> GAIA DR3 STARS</span><span><i className="legend-galaxy"></i> BACKDROP / DECORATIVE</span></div>
+        <div className="scale-ribbon"><small>SPATIAL REFERENCE</small><strong>{viewScale === "system" ? "1 SCENE UNIT = 1 AU" : "1 SCENE UNIT = 1 LIGHT-YEAR"}</strong><button onClick={function () { const next = viewScale === "system" ? "universe" : "system"; setViewScale(next); if (sceneApi.current) sceneApi.current.scale(next); }}>Switch to {viewScale === "system" ? "universe" : "Solar System"} view ↗</button></div>
       </main>
       {selected && <aside className="detail-panel" aria-label={"Details for " + selected.name}>
         <div className="panel-header"><span className="micro-label"><i></i> CELESTIAL OBJECT / PROFILE</span><button className="close-panel" onClick={closeDetails} aria-label="Close details">×</button></div>
@@ -581,6 +657,9 @@ function App() {
           <span className="portrait-caption">{String(selected.system || selected.category || "DEEP SPACE").toUpperCase()} / FIELD NOTES</span>
         </div>
         <div className="detail-tabs"><button className={activeTab === "Overview" ? "active" : ""} onClick={function () { setActiveTab("Overview"); }}>Overview</button><button className={activeTab === "Measurements" ? "active" : ""} onClick={function () { setActiveTab("Measurements"); }}>Measurements</button><button className={activeTab === "Sources" ? "active" : ""} onClick={function () { setActiveTab("Sources"); }}>Sources <span>{sources.length}</span></button></div>
+        <div className={"coordinate-note " + (selected.map_status === "unplotted" ? "unplotted" : "plotted")}>
+          <span></span><div><strong>{selected.map_status === "unplotted" ? "Not placed on the 3D map" : (viewScale === "system" ? "Solar System spatial frame · AU" : "Universe spatial frame · light-years")}</strong><small>{selected.map_status === "unplotted" ? (selected.position_accuracy || "The source does not provide a reliable 3D position; no coordinates have been invented.") : (selected.position_source || "Catalog coordinates and distance")}</small></div>
+        </div>
         {loadingDetail && <div className="inline-loading"><span className="spinner"></span> Fetching reference details…</div>}
         {activeTab === "Overview" && <><p className="object-description">{description || "This entry is indexed for exploration. Open the references below for additional scientific context."}</p><div className="section-title"><span>AT A GLANCE</span><i></i><small>KEY FACTS</small></div><div className="fact-grid">
           {Object.entries(facts).slice(0, 6).map(function (entry) { return <div className="fact-card" key={entry[0]}><span>{entry[0]}</span><strong>{String(entry[1])}</strong></div>; })}
@@ -603,14 +682,14 @@ function App() {
         <div className="panel-note"><span>✳</span> Visual scale and placement are illustrative; facts link back to scientific references.</div>
       </aside>}
       <section className="explorer-dock">
-        <div className="dock-heading"><div><span className="dock-eyebrow">YOUR NEXT DESTINATION</span><h2>Explore the cosmos <em>↘</em></h2></div><span className="object-count">{catalog.length} OBJECTS INDEXED</span></div>
+        <div className="dock-heading"><div><span className="dock-eyebrow">YOUR NEXT DESTINATION</span><h2>Explore the cosmos <em>↘</em></h2></div><span className="object-count">{catalog.length} MAPPED ENTRIES</span></div>
         <div className="category-row">{CATEGORIES.map(function (item) { return <button key={item[0]} className={"category-pill" + (category === item[0] ? " active" : "")} onClick={function () { setCategory(item[0]); if (sceneApi.current) sceneApi.current.filter(item[0]); }}><span>{ICONS[item[0]]}</span>{item[1]}</button>; })}</div>
         <div className="destination-row">{visibleCatalog.slice(0, 8).map(function (item) {
           return <button key={item.id} className={"destination" + (selected && selected.id === item.id ? " chosen" : "")} onClick={function () { chooseObject(item); }}><span className={"destination-icon " + item.category} style={{ "--orb": item.color || "#9e9eff" }}><i></i></span><span className="destination-copy"><small>{String(item.type || item.category || "OBJECT").toUpperCase()}</small><strong>{item.name}</strong></span><span className="destination-arrow">↗</span></button>;
         })}</div>
-        <div className="dock-footer"><span><i></i> LIVE INTERACTIVE SCENE</span><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><div className="scene-actions"><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(-3); }} title="Zoom in" aria-label="Zoom in">+</button><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(3); }} title="Zoom out" aria-label="Zoom out">−</button><button className={labelsOn ? "selected" : ""} onClick={toggleLabels} title="Toggle labels" aria-label="Toggle labels">T</button><button className={orbitsOn ? "selected" : ""} onClick={toggleOrbits} title="Toggle orbits" aria-label="Toggle orbits">◎</button></div></div>
+        <div className="dock-footer"><span><i></i> LIVE CATALOGS · MAPPED ENTRIES {catalog.length}</span><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><div className="scene-actions"><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(-3); }} title="Zoom in" aria-label="Zoom in">+</button><button onClick={function () { if (sceneApi.current) sceneApi.current.zoom(3); }} title="Zoom out" aria-label="Zoom out">−</button><button className={labelsOn ? "selected" : ""} onClick={toggleLabels} title="Toggle labels" aria-label="Toggle labels">T</button><button className={orbitsOn ? "selected" : ""} onClick={toggleOrbits} title="Toggle orbit paths" aria-label="Toggle orbit paths">◎</button></div></div>
       </section>
-      <div className="bottom-credit"><span></span> ASTRA KNOWLEDGE MAP <b>/</b> SCIENTIFIC LINKS INCLUDED</div>
+      <div className="bottom-credit"><span></span> MULTI-CATALOG SKY MAP <b>/</b> MARKER SIZES EXAGGERATED FOR VISIBILITY</div>
       <div className={"toast" + (notice ? " visible" : "")} role="status">{notice}</div>
       {!sceneReady && <div className="scene-loading"><span className="loading-orbit"></span><p>INITIALIZING THE COSMOS</p><small>Preparing your 3D observatory</small></div>}
     </div>
