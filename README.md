@@ -9,7 +9,7 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Interactive 3D scene:** drag to orbit, scroll to zoom, click markers, focus an object, toggle labels and orbit paths.
 - **Two spatial frames:** the universe map uses Cartesian coordinates in light-years where a reliable distance and sky position exist. The Solar System view uses astronomical units (AU), with current vectors requested from JPL Horizons when available.
 - **Solar System ephemerides:** fetches Horizons vectors for supported planets, moons, dwarf planets and small bodies. An approximate mean-orbit layout is available if live ephemerides cannot be retrieved.
-- **Exoplanet discovery:** searches NASA Exoplanet Archive\'s `pscomppars` table for planet/host matches and published parameters; the Exoplanet category can also page through archive records.
+- **Exoplanet discovery:** searches NASA Exoplanet Archive's `pscomppars` table for planet/host matches and published parameters; the Exoplanet category can also page through archive records.
 - **Small-body search:** queries NASA/JPL's Small-Body Database for matching asteroids and comets, and requests a Horizons vector where a usable identifier is available.
 - **Stellar samples and on-demand sky queries:** queries ESA Gaia DR3 for a bright all-sky sample, then requests additional sources around a selected sky direction. Parallax-based distances are estimated only for positive, quality-filtered parallaxes.
 - **Astronomical name resolution:** queries CDS Sesame (SIMBAD/NED/VizieR resolver) and plots results only when a usable distance is available. Coordinates without a reliable distance remain searchable but unplotted.
@@ -18,6 +18,7 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Catalog Navigator:** an in-app research drawer with provider counts where available, paginated exoplanets, paginated asteroid/comet records, Earth close-approach forecasts, and a bounded Gaia DR3 star sample.
 - **On-demand small-body vectors:** bulk small-body rows provide orbital parameters; selecting one requests a JPL Horizons vector instead of treating a catalog row as a current position.
 - **NASA visual archive:** search the NASA Image and Video Library for images, videos, and audio associated with planets, missions, observatories, and deep-sky targets. Previews link back to the original NASA media record.
+- **NASA research literature:** search NASA’s Technical Reports Server for public reports, mission papers, research citations and abstracts, with paginated results linked to the original citation.
 - **Responsive space UI:** deep-navy observatory design, procedural planet art, cosmic highlights, Orbitron/Space Grotesk typography, mobile layouts, reduced-motion support.
 
 ## Requirements
@@ -74,8 +75,11 @@ No HTML app file or JavaScript package manifest is required. Sinatra generates t
 | `GET /api/archive/small-bodies?limit=40&offset=0&kind=all&neo=1` | Offset-paginates JPL asteroid/comet records, optionally restricted to near-Earth objects |
 | `GET /api/small-body?query=433%20Eros` | Resolves a JPL small body and requests a current Horizons vector where possible |
 | `GET /api/close-approaches?days=90&distance=0.05&limit=30` | Returns bounded Earth close-approach forecasts from JPL/CNEOS |
+| `GET /api/fireballs?limit=30&date-min=YYYY-MM-DD` | Returns reported atmospheric fireball observations from NASA/JPL CNEOS |
+| `GET /api/impact-monitor?limit=250&probability-min=1e-6` | Returns Sentry modeled possible-impact monitoring records; not collision predictions |
 | `GET /api/coverage` | Source registry and provider-side counts where an archive supplies them; results are cached briefly |
 | `GET /api/media?q=Andromeda&limit=8&type=image` | Searches NASA’s public Image and Video Library and returns source metadata and preview links |
+| `GET /api/research?q=exoplanet%20atmosphere&limit=10&page=1` | Searches and paginates NASA Technical Reports Server citations and abstracts |
 | `GET /api/sky?limit=450` | Returns a bounded bright-star sample from Gaia DR3 (not the entire archive) |
 | `GET /api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150` | Returns a bounded Gaia DR3 sky-cone query in ICRS coordinates |
 | `GET /api/ephemeris` | Returns cached/current JPL Horizons vectors for supported Solar System bodies |
@@ -90,8 +94,11 @@ curl 'http://localhost:4567/api/search?q=TRAPPIST-1'
 curl 'http://localhost:4567/api/archive/exoplanets?limit=40'
 curl 'http://localhost:4567/api/archive/small-bodies?limit=40&kind=asteroid'
 curl 'http://localhost:4567/api/close-approaches?days=90&distance=0.05&limit=30'
+curl 'http://localhost:4567/api/fireballs?limit=30'
+curl 'http://localhost:4567/api/impact-monitor?limit=250'
 curl http://localhost:4567/api/coverage
 curl 'http://localhost:4567/api/media?q=Andromeda&limit=8&type=image'
+curl 'http://localhost:4567/api/research?q=exoplanet%20atmosphere&limit=10&page=1'
 curl 'http://localhost:4567/api/sky?ra=83.8&dec=-5.4&radius=1.2&limit=150'
 curl http://localhost:4567/api/ephemeris
 ```
@@ -130,6 +137,9 @@ A genuinely exhaustive universe catalogue is not currently achievable as a singl
 - [ESA Gaia Archive](https://gea.esac.esa.int/archive/) — stellar astrometry, parallax, photometry and associated records.
 - [CDS Sesame](https://cds.unistra.fr/cgi-bin/nph-sesame/) and [SIMBAD](https://simbad.cds.unistra.fr/) — astronomical name resolution and cross-identifications.
 - [NASA Image and Video Library API](https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf) — public mission imagery, video and audio metadata.
+- [NASA Technical Reports Server](https://ntrs.nasa.gov/) and its [public API](https://ntrs.nasa.gov/api/openapi/) — technical reports, articles, mission papers and abstracts.
+- [NASA/JPL Fireball Data API](https://ssd-api.jpl.nasa.gov/doc/fireball.html) — reported atmospheric observations; missing fields and uncertainty are expected.
+- [NASA/JPL Sentry API](https://ssd-api.jpl.nasa.gov/doc/sentry.html) — modeled possible-impact cases, not confirmed future impacts.
 - [NASA Science](https://science.nasa.gov/) and [Wikipedia](https://www.wikipedia.org/) — contextual references (Wikipedia is supplementary rather than authoritative for measured parameters).
 
 For research, check the linked record directly. Archive values, classifications and counts can change as observations and catalog releases are revised.
