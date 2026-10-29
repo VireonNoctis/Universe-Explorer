@@ -13,6 +13,16 @@ const CATEGORIES = [
 function App() {
   const [catalog, setCatalog] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [savedObjects, setSavedObjects] = useState(function () {
+    try {
+      const stored = window.localStorage.getItem("astra-research-shelf-v1");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) { return []; }
+  });
+  useEffect(function () {
+    try { window.localStorage.setItem("astra-research-shelf-v1", JSON.stringify(savedObjects)); } catch (_) {}
+  }, [savedObjects]);
   const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
@@ -692,6 +702,75 @@ function App() {
       .finally(function () { setCoverageLoading(false); });
   }
 
+  function researchObjectKey(item) {
+    if (!item || typeof item !== "object") return "";
+    if (item.id !== undefined && item.id !== null && String(item.id)) return String(item.id);
+    return [item.catalog_source || item.source || item.type || "object", item.name || item.title || item.designation || "unnamed"].join("::");
+  }
+
+  function isSavedObject(item) {
+    const key = researchObjectKey(item);
+    return Boolean(key) && savedObjects.some(function (saved) { return researchObjectKey(saved) === key; });
+  }
+
+  function toggleSavedObject(item) {
+    if (!item) return;
+    const key = researchObjectKey(item);
+    const alreadySaved = savedObjects.some(function (saved) { return researchObjectKey(saved) === key; });
+    setSavedObjects(function (previous) {
+      return alreadySaved
+        ? previous.filter(function (saved) { return researchObjectKey(saved) !== key; })
+        : [item].concat(previous.filter(function (saved) { return researchObjectKey(saved) !== key; }));
+    });
+    toast(alreadySaved ? "Removed from your research shelf." : "Saved to your research shelf.");
+  }
+
+  function downloadRecords(records, format, label) {
+    const rows = Array.isArray(records) ? records : [];
+    if (!rows.length) { toast("There are no records to export yet."); return; }
+    let content = "";
+    let mime = "text/csv;charset=utf-8";
+    let extension = "csv";
+    if (format === "json") {
+      content = JSON.stringify({
+        application: "Astra Universe Explorer",
+        exported_at: new Date().toISOString(),
+        record_count: rows.length,
+        records: rows
+      }, null, 2);
+      mime = "application/json;charset=utf-8";
+      extension = "json";
+    } else {
+      const allFields = Array.from(new Set(rows.reduce(function (fields, row) {
+        return fields.concat(Object.keys(row || {}));
+      }, [])));
+      const preferred = ["id", "name", "title", "type", "category", "system", "catalog_source", "source",
+        "ra_deg", "dec_deg", "distance_ly", "distance_au", "map_frame", "map_status", "position",
+        "local_position_au", "position_source", "url", "page_url"];
+      const columns = preferred.filter(function (field) { return allFields.includes(field); })
+        .concat(allFields.filter(function (field) { return !preferred.includes(field); }));
+      function csvCell(value) {
+        if (value === null || value === undefined) return '""';
+        const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+        return '"' + text.replace(/"/g, '""') + '"';
+      }
+      content = [columns.map(csvCell).join(",")]
+        .concat(rows.map(function (row) { return columns.map(function (field) { return csvCell(row && row[field]); }).join(","); }))
+        .join("\r\n");
+    }
+    const blob = new Blob([content], { type: mime });
+    const objectUrl = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const suffix = String(label || "records").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+    anchor.href = objectUrl;
+    anchor.download = "astra-" + suffix + "-" + new Date().toISOString().slice(0, 10) + "." + extension;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(function () { window.URL.revokeObjectURL(objectUrl); }, 1000);
+    toast("Exported " + rows.length.toLocaleString() + " records as " + extension.toUpperCase() + ".");
+  }
+
   function loadArchive(mode, reset) {
     const target = mode || archiveMode;
     if (archiveLoading) return;
@@ -947,6 +1026,7 @@ function App() {
       {selected && <aside className="detail-panel" aria-label={"Details for " + selected.name}>
         <div className="panel-header"><span className="micro-label"><i></i> CELESTIAL OBJECT / PROFILE</span><button className="close-panel" onClick={closeDetails} aria-label="Close details">×</button></div>
         <div className="detail-title"><span className="object-kind">{String(objectType).toUpperCase()}</span><h2>{selected.name}</h2><p>{selected.subtitle || selected.host || selected.system || "A destination in the observable universe"}</p></div>
+        <div className="detail-shelf-actions"><button type="button" className={"save-object-button" + (isSavedObject(selected) ? " is-saved" : "")} onClick={function () { toggleSavedObject(selected); }}><span>{isSavedObject(selected) ? "★" : "☆"}</span>{isSavedObject(selected) ? "Saved to research shelf · Remove" : "Save to research shelf"}</button></div>
         <div className="object-portrait">
           <div className={"portrait-orb " + (selected.category || "planet")} style={{ "--orb": selected.color || "#a9a4ff" }}><span></span><i></i></div>
           <div className="portrait-orbit portrait-orbit-a"></div><div className="portrait-orbit portrait-orbit-b"></div>
@@ -992,6 +1072,7 @@ function App() {
           <button className={archiveMode === "impact-monitor" ? "active" : ""} onClick={function () { setArchiveMode("impact-monitor"); loadArchive("impact-monitor", true); }} disabled={archiveLoading}>Sentry monitor</button>
           <button className={archiveMode === "media" ? "active" : ""} onClick={function () { setArchiveMode("media"); loadArchive("media", true); }} disabled={archiveLoading}>NASA media</button>
           <button className={archiveMode === "research" ? "active" : ""} onClick={function () { setArchiveMode("research"); loadArchive("research", true); }} disabled={archiveLoading}>NASA research</button>
+          <button className={archiveMode === "saved" ? "active" : ""} onClick={function () { setArchiveMode("saved"); setArchiveRows([]); setArchiveError(""); setArchiveHasMore(false); }} disabled={archiveLoading}>Research shelf <span>{savedObjects.length}</span></button>
         </div>
         {archiveMode === "coverage" && <div className="coverage-view">
           <div className="archive-intro"><span>ARCHIVE STATUS</span><h3>Many catalogs. Different skies.</h3><p>Counts below are source-specific and overlap. A source marked queryable is available for bounded searches—not downloaded in full.</p><button disabled={coverageLoading} onClick={loadCoverage}><span>↻</span> {coverageLoading ? "Checking archives…" : "Refresh source status"}</button></div>
@@ -1049,8 +1130,24 @@ function App() {
           <button className="archive-query-button" disabled={archiveLoading} onClick={function () { loadArchive("impact-monitor", true); }}>{archiveLoading ? "Querying Sentry…" : "Refresh Sentry monitoring ↗"}</button>
           <div className="archive-help">Sentry lists modeled possible-impact cases—not predictions that an impact will occur. Probabilities and ratings are uncertain and time-dependent; read the original case before interpreting a value.</div>
         </div>}
-        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "close-approaches" ? "UPCOMING EVENTS" : archiveMode === "fireballs" ? "ATMOSPHERIC OBSERVATIONS" : archiveMode === "impact-monitor" ? "MODELED MONITORING CASES" : archiveMode === "media" ? "NASA MEDIA RESULTS" : archiveMode === "research" ? "SCIENTIFIC PUBLICATIONS" : "ARCHIVE RECORDS"}</span><span>{archiveRows.length.toLocaleString()} LOADED</span></div>
-        {archiveMode !== "coverage" && <div className="archive-results">
+        {archiveMode === "saved" && <div className="archive-export-row saved-shelf-tools"><span>Saved in this browser · export records for offline research</span><div className="archive-export-actions"><button type="button" disabled={!savedObjects.length} onClick={function () { downloadRecords(savedObjects, "json", "research-shelf"); }}>Export JSON</button><button type="button" disabled={!savedObjects.length} onClick={function () { downloadRecords(savedObjects, "csv", "research-shelf"); }}>Export CSV</button><button type="button" className="clear-shelf" disabled={!savedObjects.length} onClick={function () { if (window.confirm("Clear the research shelf saved in this browser?")) { setSavedObjects([]); toast("Research shelf cleared."); } }}>Clear</button></div></div>}
+        {archiveMode !== "coverage" && archiveMode !== "saved" && archiveRows.length > 0 && <div className="archive-export-row"><span>Export {archiveRows.length.toLocaleString()} loaded source records</span><div className="archive-export-actions"><button type="button" onClick={function () { downloadRecords(archiveRows, "json", "archive-" + archiveMode); }}>JSON</button><button type="button" onClick={function () { downloadRecords(archiveRows, "csv", "archive-" + archiveMode); }}>CSV</button></div></div>}
+        {archiveMode !== "coverage" && <div className="archive-results-heading"><span>{archiveMode === "saved" ? "RESEARCH SHELF" : archiveMode === "close-approaches" ? "UPCOMING EVENTS" : archiveMode === "fireballs" ? "ATMOSPHERIC OBSERVATIONS" : archiveMode === "impact-monitor" ? "MODELED MONITORING CASES" : archiveMode === "media" ? "NASA MEDIA RESULTS" : archiveMode === "research" ? "SCIENTIFIC PUBLICATIONS" : "ARCHIVE RECORDS"}</span><span>{(archiveMode === "saved" ? savedObjects.length : archiveRows.length).toLocaleString()}{archiveMode === "saved" ? " SAVED" : " LOADED"}</span></div>
+        {archiveMode === "saved" ? <div className="archive-results saved-results">
+          {!savedObjects.length && <div className="archive-empty">Your research shelf is empty. Open an object profile and choose “Save to research shelf” to keep it here.</div>}
+          {savedObjects.map(function (item) {
+            const title = item.name || item.title || item.designation || item.id || "Saved object";
+            const detail = [item.type || item.category, item.catalog_source || item.source || "Saved research object", item.map_status === "unplotted" ? "not plotted" : null].filter(Boolean).join(" · ");
+            return <div className="saved-record-row" key={researchObjectKey(item)}>
+              <button type="button" className="archive-record" onClick={function () { selectArchiveItem(item); }}>
+                <span className={"archive-record-symbol " + (item.category || "deep")}>{ICONS[item.category] || "✧"}</span>
+                <span className="archive-record-copy"><strong>{title}</strong><small>{detail}</small><em>{item.subtitle || item.position_source || item.description || "Open the saved record to view its profile and references."}</em></span>
+                <span className="archive-record-arrow">↗</span>
+              </button>
+              <button type="button" className="saved-remove-button" aria-label={"Remove " + title + " from research shelf"} onClick={function () { toggleSavedObject(item); }}>×</button>
+            </div>;
+          })}
+        </div> : archiveMode !== "coverage" && <div className="archive-results">
           {archiveLoading && !archiveRows.length && <div className="archive-empty"><span className="spinner"></span> Querying the remote catalog…</div>}
           {!archiveLoading && !archiveRows.length && !archiveError && <div className="archive-empty">Choose a query above to discover records from this source.</div>}
           {archiveRows.map(function (item) {
