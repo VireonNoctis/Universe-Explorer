@@ -15,6 +15,7 @@ Astra is an interactive astronomy browser built around three application files: 
 - **Astronomical name resolution:** queries CDS Sesame (SIMBAD/NED/VizieR resolver) and plots results only when a usable distance is available. Coordinates without a reliable distance remain searchable but unplotted.
 - **Supplementary discovery:** Wikipedia search/summary provides broader context rather than serving as the scientific measurement authority.
 - **Object profiles:** summaries, measurements, coordinate provenance, related objects, and direct source links.
+- **Personal research shelf:** save object profiles in browser-local storage and export saved records or currently loaded archive pages as JSON/CSV, preserving source fields and coordinate provenance.
 - **Catalog Navigator:** an in-app research drawer with source coverage, paginated exoplanets, paginated asteroid/comet records, Earth close-approach forecasts, fireball observations, Sentry monitoring records, a bounded Gaia DR3 star sample, NASA image search and NASA technical literature.
 - **On-demand small-body vectors:** bulk small-body rows provide orbital parameters; selecting one requests a JPL Horizons vector instead of treating a catalog row as a current position. Sentry entries can also be cross-resolved into the JPL orbit record and position lookup.
 - **NASA visual archive:** search the NASA Image and Video Library for images, videos, and audio associated with planets, missions, observatories, and deep-sky targets. Previews link back to the original NASA media record.
@@ -104,6 +105,12 @@ curl http://localhost:4567/api/ephemeris
 ```
 
 Live remote services may rate-limit or time out. Search returns what reachable sources provide; a source outage is not evidence that an object does not exist.
+
+## Research shelf and export
+
+Open a celestial object profile and select **Save to research shelf** to keep that record between visits in the same browser. The **Research shelf** tab can export saved records as JSON or CSV. Other archive tabs can export their currently loaded results in either format. JSON keeps the original record structure; CSV includes the union of available fields, including coordinate, source, and measurement metadata when supplied.
+
+The shelf is stored in that browser's local storage, not in a cloud account or a server database. Export a backup before clearing browser data or moving to another device. An archive export includes only records already loaded into the app; it is not a dump of the complete remote archive.
 
 ## Spatial accuracy: what is and is not to scale
 
