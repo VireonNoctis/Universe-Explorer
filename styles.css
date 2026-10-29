@@ -128,6 +128,12 @@ a { color: inherit; text-decoration: none; }
 .object-kind { color: #a99cff; font: 9px var(--display); letter-spacing: .16em; }
 .detail-title h2 { overflow-wrap: anywhere; margin: 7px 0 5px; color: #f2f3ff; font-size: 29px; font-weight: 500; line-height: 1.12; letter-spacing: -.05em; }
 .detail-title p { margin: 0; color: #929dbe; font-size: 11px; line-height: 1.6; }
+.detail-shelf-actions { display: flex; align-items: center; gap: 8px; margin: 11px 0 3px; }
+.save-object-button { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 11px; border: 1px solid rgba(176, 164, 255, .28); border-radius: 7px; background: rgba(153, 140, 245, .09); color: #d4d0ff; font-size: 9px; text-align: left; transition: background .17s, border-color .17s; }
+.save-object-button:hover { border-color: rgba(176, 164, 255, .58); background: rgba(153, 140, 245, .16); }
+.save-object-button span { color: #b9adff; font-size: 15px; line-height: 1; }
+.save-object-button.is-saved { border-color: rgba(117, 224, 200, .3); color: #b8f0e2; background: rgba(82, 199, 170, .07); }
+.save-object-button.is-saved span { color: #83e3c9; }
 .object-portrait { height: 135px; position: relative; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; overflow: hidden; margin: 6px -5px 0; background: radial-gradient(ellipse at 50% 54%, rgba(111, 102, 198, .12), transparent 65%); }
 .portrait-orb { --orb: #839bff; z-index: 2; position: relative; display: block; width: 70px; height: 70px; flex: 0 0 auto; border-radius: 50%; background: radial-gradient(circle at 31% 24%, rgba(255, 255, 255, .93), var(--orb) 15%, color-mix(in srgb, var(--orb), #1b2344 38%) 55%, #070a18 100%); box-shadow: 0 0 17px color-mix(in srgb, var(--orb), transparent 74%), 0 0 48px color-mix(in srgb, var(--orb), transparent 78%), inset -10px -7px 16px rgba(0, 0, 0, .62); animation: orb-float 6s ease-in-out infinite; }
 .portrait-orb::after { content: ""; position: absolute; inset: -4px; border: 1px solid color-mix(in srgb, var(--orb), transparent 77%); border-radius: 50%; }
@@ -286,6 +292,13 @@ a { color: inherit; text-decoration: none; }
 .archive-help { margin-top: 8px; color: #7c88aa; font-size: 9px; line-height: 1.6; }
 .archive-results-heading { display: flex; flex: 0 0 auto; justify-content: space-between; gap: 8px; padding: 12px 17px 8px; color: #aab4d6; font: 8px var(--display); letter-spacing: .1em; }
 .archive-results-heading span + span { color: #7180a3; font-size: 7px; }
+.archive-export-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px; border-bottom: 1px solid rgba(164, 178, 230, .1); color: #8996b8; font-size: 8px; line-height: 1.5; }
+.archive-export-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.archive-export-row button { padding: 6px 8px; border: 1px solid rgba(176, 164, 255, .26); border-radius: 5px; background: rgba(153, 140, 245, .08); color: #d7d1ff; font-size: 8px; white-space: nowrap; }
+.archive-export-row button:hover:not(:disabled) { border-color: rgba(176, 164, 255, .55); background: rgba(153, 140, 245, .16); }
+.archive-export-row button:disabled { cursor: default; opacity: .4; }
+.archive-export-row .clear-shelf { border-color: rgba(255, 155, 177, .2); color: #dda4b4; }
+.archive-export-row .clear-shelf:hover:not(:disabled) { border-color: rgba(255, 155, 177, .5); background: rgba(255, 110, 145, .08); }
 .archive-results { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 12px 10px; scrollbar-width: thin; scrollbar-color: rgba(153, 154, 220, .27) transparent; }
 .archive-results::-webkit-scrollbar, .coverage-view::-webkit-scrollbar { width: 5px; }
 .archive-results::-webkit-scrollbar-thumb, .coverage-view::-webkit-scrollbar-thumb { border-radius: 7px; background: rgba(153, 154, 220, .27); }
@@ -323,6 +336,11 @@ a { color: inherit; text-decoration: none; }
 .archive-panel-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 7px; padding: 10px 14px; border-top: 1px solid rgba(164, 178, 230, .11); color: #687697; font: 7px var(--display); letter-spacing: .065em; }
 .archive-panel-footer span:first-child { display: flex; align-items: center; gap: 6px; }
 .archive-panel-footer i { width: 4px; height: 4px; border-radius: 50%; background: #7be0c8; box-shadow: 0 0 6px #7be0c8; }
+
+.saved-record-row { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(157, 173, 228, .095); }
+.saved-record-row .archive-record { flex: 1; min-width: 0; border-bottom-color: transparent; }
+.saved-remove-button { flex: 0 0 auto; width: 27px; height: 27px; border: 1px solid rgba(255, 155, 177, .18); border-radius: 6px; background: rgba(255, 110, 145, .045); color: #c88d9e; font-size: 16px; }
+.saved-remove-button:hover { border-color: rgba(255, 155, 177, .48); color: #ffb9c9; background: rgba(255, 110, 145, .1); }
 
 @media (min-width: 1450px) {
   .topbar { padding: 0 46px; }
