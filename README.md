@@ -1,5 +1,13 @@
 # Astra — Universe Explorer
 
+<!-- REPOSITORY-HEALTH:START -->
+[![Code quality](https://github.com/VireonNoctis/Universe-Explorer/actions/workflows/repository-health.yml/badge.svg?branch=main)](https://github.com/VireonNoctis/Universe-Explorer/actions/workflows/repository-health.yml)
+[![Top language](https://img.shields.io/github/languages/top/VireonNoctis/Universe-Explorer?style=flat-square)](https://github.com/VireonNoctis/Universe-Explorer)
+[![Languages](https://img.shields.io/github/languages/count/VireonNoctis/Universe-Explorer?style=flat-square)](https://github.com/VireonNoctis/Universe-Explorer)
+[![Automated tech stack](https://img.shields.io/badge/tech_stack-auto--detected-64748b?style=flat-square)](TECH_STACK.md)
+<!-- REPOSITORY-HEALTH:END -->
+
+
 Astra is an interactive astronomy browser built around three application files: a React/Three.js frontend, a space-themed CSS system, and a Ruby/Sinatra API. It combines curated object profiles with **live, query-driven public science archives** and source links.
 
 > **Scientific coverage note:** there is no single complete database of every known cosmic object. Current archives contain enormous datasets, measurement uncertainties, missing distances, and different coverage. Astra federates public services and loads bounded samples/search results on demand; it does not claim to copy or fully render every record in every archive.
